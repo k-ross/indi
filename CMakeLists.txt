@@ -43,7 +43,7 @@ ENDIF ()
 set(INDI_SOVERSION "1")
 set(CMAKE_INDI_VERSION_MAJOR 1)
 set(CMAKE_INDI_VERSION_MINOR 9)
-set(CMAKE_INDI_VERSION_RELEASE 3)
+set(CMAKE_INDI_VERSION_RELEASE 5)
 set(CMAKE_INDI_VERSION_STRING "${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE}")
 set(INDI_VERSION ${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE})
 
@@ -232,6 +232,7 @@ if (ANDROID)
         set(CFITSIO_LIBRARIES ${CFITSIO_DIR}/libcfitsio.a)
     endif ()
 else ()
+    find_package(Qt5Core REQUIRED)
     find_package(Qt5Network REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(CFITSIO REQUIRED)
@@ -340,6 +341,11 @@ ENDIF (${CMAKE_SYSTEM_NAME} MATCHES "Linux|FreeBSD")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config-usb.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-usb.h)
 
+if (CMAKE_VERSION VERSION_LESS 3.12.0)
+set(CURL ${CURL_LIBRARIES})
+else()
+set(CURL CURL::libcurl)
+endif()
 ###################################################################################################
 ########################################  Sources  ################################################
 ###################################################################################################
@@ -648,13 +654,11 @@ SET(lx200generic_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200generic.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200telescope.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200classic.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200apdriver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200gemini.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200zeq25.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200gotonova.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200pulsar2.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_experimentaldriver.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_experimental.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200apdriver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_gtocp2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200fs2.cpp
@@ -683,9 +687,8 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/make_lx200generic_symlink.cmake
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200autostar)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200_16)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200gps)\n
-exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap_experimental)\n
-exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap_gtocp2)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap)\n
+exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap_gtocp2)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200gemini)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200zeq25)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200gotonova)\n
@@ -949,6 +952,15 @@ SET(nstep_SRC
 add_executable(indi_nstep_focus ${nstep_SRC})
 target_link_libraries(indi_nstep_focus indidriver)
 install(TARGETS indi_nstep_focus RUNTIME DESTINATION bin)
+
+################ Rigelsys nFrame Rotator ################
+
+SET(nframe_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/rotator/nframe.cpp)
+
+add_executable(indi_nframe_rotator ${nframe_SRC})
+target_link_libraries(indi_nframe_rotator indidriver)
+install(TARGETS indi_nframe_rotator RUNTIME DESTINATION bin)
 
 ################ PlaneWave EFA ################
 
@@ -1472,7 +1484,7 @@ set(scopedome_SRCS
    )
 
 add_executable(indi_scopedome_dome ${scopedome_SRCS})
-target_link_libraries(indi_scopedome_dome indidriver ${CURL_LIBRARIES})
+target_link_libraries(indi_scopedome_dome indidriver ${CURL})
 install(TARGETS indi_scopedome_dome RUNTIME DESTINATION bin )
 
 ################ Technical Innovations DDW Dome ################
@@ -1493,6 +1505,14 @@ SET(domescript_SRC
 add_executable(indi_script_dome ${domescript_SRC})
 target_link_libraries(indi_script_dome indidriver)
 install(TARGETS indi_script_dome RUNTIME DESTINATION bin)
+
+########### NexDome Beaver Controller ##############
+SET(nexdome_beaver_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/dome/nexdome_beaver.cpp)
+
+add_executable(indi_nexdome_beaver ${nexdome_beaver_SRC})
+target_link_libraries(indi_nexdome_beaver indidriver)
+install(TARGETS indi_nexdome_beaver RUNTIME DESTINATION bin)
 
 #################################################################################
 
@@ -1779,7 +1799,7 @@ SET(weatherwatcher_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/weather/weatherwatcher.cpp)
 
 add_executable(indi_watcher_weather ${weatherwatcher_SRC})
-target_link_libraries(indi_watcher_weather indidriver ${CURL_LIBRARIES})
+target_link_libraries(indi_watcher_weather indidriver ${CURL})
 install(TARGETS indi_watcher_weather RUNTIME DESTINATION bin )
 
 ########### Weather Safety Proxy ###############
@@ -1787,9 +1807,8 @@ install(TARGETS indi_watcher_weather RUNTIME DESTINATION bin )
 SET(weathersafetyproxy_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/weather/gason.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/weather/weather_safety_proxy.cpp)
-
 add_executable(indi_weather_safety_proxy ${weathersafetyproxy_SRC})
-target_link_libraries(indi_weather_safety_proxy indidriver ${CURL_LIBRARIES})
+target_link_libraries(indi_weather_safety_proxy indidriver ${CURL})
 install(TARGETS indi_weather_safety_proxy RUNTIME DESTINATION bin )
 
 ########### MBox Driver ###############
@@ -1821,7 +1840,7 @@ IF (UNITY_BUILD)
 ENDIF ()
 
 add_executable(indi_openweathermap_weather ${OpenWeatherMap_SRC})
-target_link_libraries(indi_openweathermap_weather indidriver ${CURL_LIBRARIES})
+target_link_libraries(indi_openweathermap_weather indidriver ${CURL})
 install(TARGETS indi_openweathermap_weather RUNTIME DESTINATION bin)
 
 ########### Deep Sky Dad FP1 ###############
