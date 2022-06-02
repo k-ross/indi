@@ -43,7 +43,7 @@ ENDIF ()
 set(INDI_SOVERSION "1")
 set(CMAKE_INDI_VERSION_MAJOR 1)
 set(CMAKE_INDI_VERSION_MINOR 9)
-set(CMAKE_INDI_VERSION_RELEASE 5)
+set(CMAKE_INDI_VERSION_RELEASE 7)
 set(CMAKE_INDI_VERSION_STRING "${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE}")
 set(INDI_VERSION ${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE})
 
@@ -403,6 +403,7 @@ ENDIF(OGGTHEORA_FOUND)
 ENDIF(UNIX)
 
 SET(libdsp_C_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/fits.c
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/buffer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/convert.c
@@ -1061,6 +1062,16 @@ add_executable(indi_sestosenso2_focus ${sesto2_SRC})
 target_link_libraries(indi_sestosenso2_focus indidriver)
 install(TARGETS indi_sestosenso2_focus RUNTIME DESTINATION bin)
 
+################ Esatto with Arco Focuser ################
+SET(esarc_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/esattoarco.cpp)
+
+add_executable(indi_esattoarco_focus ${esarc_SRC})
+target_link_libraries(indi_esattoarco_focus indidriver)
+install(TARGETS indi_esattoarco_focus RUNTIME DESTINATION bin)
+
+
+
 ################ Televue FocusMaster ################
 #SET(focusmaster_SRC
 #    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/focusmaster.cpp)
@@ -1319,6 +1330,14 @@ SET(activefocuser_SRC
 add_executable(indi_activefocuser_focus ${activefocuser_SRC} drivers/focuser/activefocuser_utils.cpp drivers/focuser/activefocuser_utils.h)
 target_link_libraries(indi_activefocuser_focus indidriver)
 install(TARGETS indi_activefocuser_focus RUNTIME DESTINATION bin)
+
+################ Wanderer Rotator Lite ################
+SET(WandererRotatorLite_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/rotator/wanderer_rotator_lite.cpp)
+
+add_executable(indi_wanderer_lite_rotator ${WandererRotatorLite_SRC})
+target_link_libraries(indi_wanderer_lite_rotator indidriver)
+install(TARGETS indi_wanderer_lite_rotator RUNTIME DESTINATION bin)
 
 #################################################################################
 
@@ -2054,6 +2073,10 @@ if (INDI_BUILD_DRIVERS OR INDI_BUILD_CLIENT OR INDI_BUILD_QT5_CLIENT)
         ${CMAKE_CURRENT_SOURCE_DIR}/eventloop.h
         ${CMAKE_CURRENT_SOURCE_DIR}/indidriver.h
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/dsp.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/fits_extensions.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/fits.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/sdfits.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/dsp/fitsidi.h
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/indibase/pid/pid.h
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/indibase/indibase.h
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/indibase/indibasetypes.h
