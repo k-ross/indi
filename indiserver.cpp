@@ -1055,6 +1055,7 @@ static void logStartup(int ac, char *av[])
         startupMsg += " ";
         startupMsg += av[i];
     }
+    startupMsg += '\n';
     log(startupMsg);
 }
 
@@ -1769,11 +1770,8 @@ void Fifo::processLine(const char * line)
         {
             if (dp == nullptr) continue;
 
-            log(fmt("dp->name: %s - tDriver: %s\n", dp->name.c_str(), tDriver));
             if (dp->name == tDriver)
             {
-                log(fmt("name: %s - dp->dev[0]: %s\n", tName, dp->dev.empty() ? "" : dp->dev.begin()->c_str()));
-
                 /* If device name is given, check against it before shutting down */
                 if (tName[0] && !dp->isHandlingDevice(tName))
                     continue;
@@ -3868,7 +3866,7 @@ size_t MsgQueue::doRead(char * buf, size_t nr)
                 {
                     fdCount++;
                 }
-                log(fmt("Received %d fds\n", fdCount));
+                //log(fmt("Received %d fds\n", fdCount));
                 int * fds = (int*)CMSG_DATA(cmsg);
                 for(int i = 0; i < fdCount; ++i)
                 {
