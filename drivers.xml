@@ -21,6 +21,10 @@
             <driver name="LX200 OnStep">indi_lx200_OnStep</driver>
             <version>1.16</version>
         </device>
+        <device label="LX200 OpenAstroTech" manufacturer="OpenAstroTech">
+            <driver name="LX200 OpenAstroTech">indi_lx200_OpenAstroTech</driver>
+            <version>0.9</version>
+        </device>
         <device label="LX200 TeenAstro" manufacturer="TeenAstro">
             <driver name="LX200 TeenAstro">indi_lx200_TeenAstro</driver>
             <version>1.3</version>
@@ -383,6 +387,10 @@
             <driver name="Pegasus FocusCube">indi_pegasus_focuscube</driver>
             <version>1.0</version>
         </device>
+         <device label="Pegasus ProdigyMF" manufacturer="Pegasus Astro">
+            <driver name="Pegasus MMC-7000AH">indi_pegasus_prodigyMF</driver>
+            <version>1.0</version>
+        </device>
         <device label="Pegasus ScopsOAG" manufacturer="Pegasus Astro">
             <driver name="Pegasus DMFC">indi_pegasus_scopsoag</driver>
             <version>1.0</version>
@@ -667,6 +675,10 @@
                <driver name="Wanderer Rotator Lite">indi_wanderer_lite_rotator</driver>
                <version>1.0</version>
         </device>
+        <device label="Wanderer Cover V3" manufacturer="Wanderer Astro">
+            <driver name="Wanderer Cover V3">indi_wanderer_cover</driver>
+            <version>1.0</version>
+        </device>        
     </devGroup>
     <devGroup group="Domes">
         <device label="ScopeDome Dome" manufacturer="ScopeDome">

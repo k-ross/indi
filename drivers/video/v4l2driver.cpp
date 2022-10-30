@@ -1906,6 +1906,23 @@ bool V4L2_Driver::saveConfigItems(FILE * fp)
     if (ImageAdjustNP.nnp > 0)
         IUSaveConfigNumber(fp, &ImageAdjustNP);
 
+    // Try to save important auto-generated properties, if found.
+
+    // Format
+    auto format = getProperty("V4L2_FORMAT");
+    if (format.isValid())
+        IUSaveConfigSwitch(fp, format.getSwitch());
+
+    // Size
+    auto size = getProperty("V4L2_SIZE_DISCRETE");
+    if (size.isValid())
+        IUSaveConfigSwitch(fp, size.getSwitch());
+
+    auto fps = getProperty("V4L2_FRAMEINT_DISCRETE");
+    if (fps.isValid())
+        IUSaveConfigSwitch(fp, fps.getSwitch());
+
+
     return Streamer->saveConfigItems(fp);
 }
 
