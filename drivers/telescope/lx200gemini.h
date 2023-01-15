@@ -60,8 +60,11 @@ class LX200Gemini : public LX200Generic
 
         virtual bool saveConfigItems(FILE *fp) override;
 
+          // Guide Pulse Commands
+        virtual int SendPulseCmd(int8_t direction, uint32_t duration_msec) override;
+
     private:
-        void syncPec();
+        void syncState();
         void syncSideOfPier();
         bool sleepMount();
         bool wakeupMount();
@@ -105,15 +108,21 @@ class LX200Gemini : public LX200Generic
         INumber PECMaxStepsN[1];
         INumberVectorProperty PECMaxStepsNP;
   
-        INumber ServoPrecisionN[2];
-        INumberVectorProperty ServoPrecisionNP;
+        ISwitch ServoPrecisionS[2];
+        ISwitchVectorProperty ServoPrecisionSP;
 
-        INumber PECEnableAtBootN[1];
-        INumberVectorProperty PECEnableAtBootNP;
+        ISwitch PECEnableAtBootS[1];
+        ISwitchVectorProperty PECEnableAtBootSP;
 
         INumber PECGuidingSpeedN[1];
         INumberVectorProperty PECGuidingSpeedNP;
 
+        ISwitch FlipControlS[2];
+        ISwitchVectorProperty FlipControlSP;
+
+        INumber FlipPositionN[4];
+        INumberVectorProperty FlipPositionNP;
+  
         ITextVectorProperty VersionTP;
         IText VersionT[5] {};
 
@@ -201,6 +210,34 @@ class LX200Gemini : public LX200Generic
             PARKED,
             PARK_IN_PROGRESS
         };
+
+        enum FlipPointState
+	{
+	    FLIP_DISABLED,
+	    FLIP_EAST,
+	    FLIP_WEST
+	};
+
+        enum ServoPrecisionState
+	{
+	    PRECISION_DISABLED,
+	    RA_PRECISION_ENABLED,
+	    DEC_PRECISION_ENABLED
+	};
+
+        enum FlipPointControl
+	{
+	    FLIP_EAST_CONTROL,
+	    FLIP_WEST_CONTROL
+	};
+
+        enum FlipPointValue
+	{
+	    FLIP_EAST_DEGREE_VALUE,
+	    FLIP_EAST_MIN_VALUE,
+	    FLIP_WEST_DEGREE_VALUE,
+	    FLIP_WEST_MIN_VALUE
+	};
 
         const uint8_t GEMINI_TIMEOUT = 3;
 

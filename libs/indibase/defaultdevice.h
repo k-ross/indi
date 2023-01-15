@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "basedevice.h"
+#include "parentdevice.h"
 #include "indidriver.h"
 #include "indilogger.h"
 
@@ -115,7 +115,7 @@ namespace INDI
 {
 
 class DefaultDevicePrivate;
-class DefaultDevice : public BaseDevice
+class DefaultDevice : public ParentDevice
 {
         DECLARE_PRIVATE(DefaultDevice)
 
@@ -149,7 +149,8 @@ class DefaultDevice : public BaseDevice
          * save configuration files.
          * \param nvp The number vector property to be defined
          */
-        void defineNumber(INumberVectorProperty *nvp) __attribute__((deprecated));
+        INDI_DEPRECATED("Use defineProperty(INDI::Property &).")
+        void defineNumber(INumberVectorProperty *nvp);
         void defineProperty(INumberVectorProperty *property);
 
         /**
@@ -158,7 +159,8 @@ class DefaultDevice : public BaseDevice
          * configuration files.
          * \param tvp The text vector property to be defined
          */
-        void defineText(ITextVectorProperty *tvp) __attribute__((deprecated));
+        INDI_DEPRECATED("Use defineProperty(INDI::Property &).")
+        void defineText(ITextVectorProperty *tvp);
         void defineProperty(ITextVectorProperty *property);
 
         /**
@@ -167,7 +169,8 @@ class DefaultDevice : public BaseDevice
          * configuration files.
          * \param svp The switch vector property to be defined
          */
-        void defineSwitch(ISwitchVectorProperty *svp) __attribute__((deprecated));
+        INDI_DEPRECATED("Use defineProperty(INDI::Property &).")
+        void defineSwitch(ISwitchVectorProperty *svp);
         void defineProperty(ISwitchVectorProperty *property);
 
         /**
@@ -176,7 +179,8 @@ class DefaultDevice : public BaseDevice
          * configuration files.
          * \param lvp The light vector property to be defined
          */
-        void defineLight(ILightVectorProperty *lvp) __attribute__((deprecated));
+        INDI_DEPRECATED("Use defineProperty(INDI::Property &).")
+        void defineLight(ILightVectorProperty *lvp);
         void defineProperty(ILightVectorProperty *property);
 
         /**
@@ -185,7 +189,8 @@ class DefaultDevice : public BaseDevice
          * save configuration files.
          * \param bvp The BLOB vector property to be defined
          */
-        void defineBLOB(IBLOBVectorProperty *bvp) __attribute__((deprecated));
+        INDI_DEPRECATED("Use defineProperty(INDI::Property &).")
+        void defineBLOB(IBLOBVectorProperty *bvp);
         void defineProperty(IBLOBVectorProperty *property);
 
         void defineProperty(INDI::Property &property);
@@ -304,7 +309,7 @@ class DefaultDevice : public BaseDevice
         /**
          * @return getInterface Return the interface declared by the driver.
          */
-        virtual uint16_t getDriverInterface() override;
+        uint16_t getDriverInterface() const;
 
         /**
          * @brief setInterface Set driver interface. By default the driver interface is set to GENERAL_DEVICE.
@@ -314,6 +319,13 @@ class DefaultDevice : public BaseDevice
          * client. To synchronize the client, use syncDriverInfo funciton.
          */
         void setDriverInterface(uint16_t value);
+
+    public:
+        /** @brief Add a device to the watch list.
+         *
+         *  A driver may select to receive notifications of a specific other device.
+         */
+        void watchDevice(const char *deviceName, const std::function<void (INDI::BaseDevice)> &callback);
 
     protected:
         /**
@@ -559,7 +571,7 @@ class DefaultDevice : public BaseDevice
         friend class FocuserInterface;
 
     protected:
-        DefaultDevice(DefaultDevicePrivate &dd);
+        DefaultDevice(const std::shared_ptr<DefaultDevicePrivate> &dd);
 };
 
 }

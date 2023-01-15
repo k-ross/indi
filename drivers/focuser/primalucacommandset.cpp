@@ -88,7 +88,7 @@ bool Communication::sendRequest(const json &command, json *response)
     {
         if (strstr(read_buf, "Error:"))
         {
-            LOGF_ERROR("Requred %s failed: %s", command.dump().c_str(), read_buf);
+            LOGF_ERROR("Required %s failed: %s", command.dump().c_str(), read_buf);
             return false;
         }
         *response = json::parse(read_buf)["res"];
@@ -231,7 +231,7 @@ Focuser::Focuser(const std::string &name, int port)
 *******************************************************************************************************/
 bool Focuser::goAbsolutePosition(uint32_t position)
 {
-    return m_Communication->command(MOT_1, {{"MOVE_ABS", {{"STEPS", position}}}});
+    return m_Communication->command(MOT_1, {{"MOVE_ABS", {{"STEP", position}}}});
 }
 
 /******************************************************************************************************
@@ -364,6 +364,23 @@ bool Focuser::getFirmwareVersion(std::string &response)
 }
 
 /******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool Focuser::setBacklash(uint32_t steps)
+{
+    return m_Communication->set(MOT_1, {{"BKLASH", steps}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool Focuser::getBacklash(uint32_t &steps)
+{
+    return m_Communication->get(MOT_1, "BKLASH", steps);
+}
+
+
+/******************************************************************************************************
  * SestoSenso2 functions
 *******************************************************************************************************/
 SestoSenso2::SestoSenso2(const std::string &name, int port) : Focuser(name, port) {}
@@ -401,7 +418,7 @@ bool SestoSenso2::initCalibration()
 *******************************************************************************************************/
 bool SestoSenso2::applyMotorPreset(const std::string &name)
 {
-    return m_Communication->command(MOT_1, {{"RUNPRESET", name}});
+    return m_Communication->command(MOT_NONE, {{"RUNPRESET", name}});
 }
 
 /******************************************************************************************************
@@ -430,7 +447,16 @@ bool SestoSenso2::setMotorUserPreset(uint32_t index, const MotorRates &rates, co
 *******************************************************************************************************/
 bool SestoSenso2::getMotorSettings(MotorRates &rates, MotorCurrents &currents, bool &motorHoldActive)
 {
-    json jsonRequest = {{"req", {{"get", {{"MOT1", ""}}}}}};
+    json jsonRequest = {{"req", {{"get", {{"MOT1", { {"FnRUN_ACC", ""},
+                                {"FnRUN_DEC", ""}, {"FnRUN_SPD", ""}, {"FnRUN_CURR_ACC", ""},
+                                {"FnRUN_CURR_DEC", ""}, {"FnRUN_CURR_SPD", ""}, {"FnRUN_CURR_HOLD", ""}, {"HOLDCURR_STATUS", ""}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
     json jsonResponse;
 
     if (m_Communication->sendRequest(jsonRequest, &jsonResponse))
@@ -443,7 +469,10 @@ bool SestoSenso2::getMotorSettings(MotorRates &rates, MotorCurrents &currents, b
         jsonResponse["get"]["MOT1"]["FnRUN_CURR_DEC"].get_to(currents.decCurrent);
         jsonResponse["get"]["MOT1"]["FnRUN_CURR_SPD"].get_to(currents.runCurrent);
         jsonResponse["get"]["MOT1"]["FnRUN_CURR_HOLD"].get_to(currents.holdCurrent);
-        jsonResponse["get"]["MOT1"]["HOLDCURR_STATUS"].get_to(motorHoldActive);
+
+        int status = 0;
+        jsonResponse["get"]["MOT1"]["HOLDCURR_STATUS"].get_to(status);
+        motorHoldActive = ( status == 1 );
         return true;
     }
     return false;
@@ -555,7 +584,7 @@ bool Arco::getAbsolutePosition(Units unit, double &value)
             command = {{"POSITION", "ARCSEC"}};
             break;
         case UNIT_STEPS:
-            command = {{"POSITION", "STEPS"}};
+            command = {{"POSITION", "STEP"}};
             break;
     }
 
@@ -593,7 +622,7 @@ bool Arco::moveAbsolutePoition(Units unit, double value)
             command = {{"MOVE_ABS", {{"ARCSEC", value}}}};
             break;
         case UNIT_STEPS:
-            command = {{"MOVE_ABS", {{"STEPS", static_cast<int>(value)}}}};
+            command = {{"MOVE_ABS", {{"STEP", static_cast<int>(value)}}}};
             break;
     }
 
@@ -615,7 +644,7 @@ bool Arco::sync(Units unit, double value)
             command = {{"SYNC_POS", {{"ARCSEC", value}}}};
             break;
         case UNIT_STEPS:
-            command = {{"SYNC_POS", {{"STEPS", static_cast<int>(value)}}}};
+            command = {{"SYNC_POS", {{"STEP", static_cast<int>(value)}}}};
             break;
     }
 
