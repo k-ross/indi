@@ -77,7 +77,7 @@ MyClient::MyClient()
         {
             IDLog("Connecting to INDI Driver...\n");
             connectDevice("Simple CCD");
-        });
+        }, INDI::BaseDevice::WATCH_NEW);
 
         // wait for the availability of the "CCD_TEMPERATURE" property
         device.watchProperty("CCD_TEMPERATURE", [this](INDI::PropertyNumber property)
@@ -91,31 +91,27 @@ MyClient::MyClient()
             // call lambda function if property changed
             property.onUpdate([property, this]()
             {
-                IDLog("Receving new CCD Temperature: %g C\n", property[0].getValue());
+                IDLog("Receiving new CCD Temperature: %g C\n", property[0].getValue());
                 if (property[0].getValue() == -20)
                 {
                     IDLog("CCD temperature reached desired value!\n");
                     takeExposure(1);
                 }
             });
-        });
+        }, INDI::BaseDevice::WATCH_NEW);
 
-        // wait for the availability of the "CCD1" property
+        // call if updated of the "CCD1" property - simplified way
         device.watchProperty("CCD1", [](INDI::PropertyBlob property)
         {
-            // call lambda function if property changed
-            property.onUpdate([property]()
-            {
-                // Save FITS file to disk
-                std::ofstream myfile;
+            // Save FITS file to disk
+            std::ofstream myfile;
 
-                myfile.open("ccd_simulator.fits", std::ios::out | std::ios::binary);
-                myfile.write(static_cast<char *>(property[0].getBlob()), property[0].getBlobLen());
-                myfile.close();
+            myfile.open("ccd_simulator.fits", std::ios::out | std::ios::binary);
+            myfile.write(static_cast<char *>(property[0].getBlob()), property[0].getBlobLen());
+            myfile.close();
 
-                IDLog("Received image, saved as ccd_simulator.fits\n");
-            });
-        });
+            IDLog("Received image, saved as ccd_simulator.fits\n");
+        }, INDI::BaseDevice::WATCH_UPDATE);
     });
 }
 

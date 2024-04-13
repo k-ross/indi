@@ -254,7 +254,7 @@ BaseClientPrivate::BaseClientPrivate(BaseClient *parent)
 
             if (err_code < 0)
             {
-                // Silenty ignore property duplication errors
+                // Silently ignore property duplication errors
                 if (err_code != INDI_PROPERTY_DUPLICATED)
                 {
                     IDLog("Dispatch command error(%d): %s\n", err_code, msg);
@@ -266,7 +266,10 @@ BaseClientPrivate::BaseClientPrivate(BaseClient *parent)
 
     clientSocket.onErrorOccurred([this] (TcpSocket::SocketError)
     {
-        this->parent->serverDisconnected(exitCode);
+        if (sConnected == false)
+            return;
+
+        this->parent->serverDisconnected(-1);
         clear();
         watchDevice.unwatchDevices();
     });
@@ -306,17 +309,15 @@ bool BaseClient::connectServer()
 {
     D_PTR(BaseClient);
 
-    if (d->sConnected.exchange(true) == true)
+    if (d->sConnected == true)
     {
         IDLog("INDI::BaseClient::connectServer: Already connected.\n");
         return false;
     }
 
-    d->exitCode = -1;
-
     IDLog("INDI::BaseClient::connectServer: creating new connection...\n");
 
-#ifndef _WINDOWS
+#if !defined (_WIN32)
     // System with unix support automatically connect over unix domain
     if (d->cServer != "localhost" || d->cServer != "127.0.0.1" || d->connectToHostAndWait("localhost:", d->cPort) == false)
 #endif
@@ -329,6 +330,8 @@ bool BaseClient::connectServer()
     }
 
     d->clear();
+
+    d->sConnected = true;
 
     serverConnected();
 
@@ -347,7 +350,6 @@ bool BaseClient::disconnectServer(int exit_code)
         return false;
     }
 
-    d->exitCode = exit_code;
     d->clientSocket.disconnectFromHost();
     bool ret = d->clientSocket.waitForDisconnected();
     // same behavior as in `BaseClientQt::disconnectServer`

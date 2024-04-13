@@ -3,7 +3,7 @@
  Copyright(c) 2014 Jasem Mutlaq. All rights reserved.
 
  The code used calculate dome target AZ and ZD is written by Ferran Casarramona, and adapted from code from Markus Wildi.
- The transformations are based on the paper Matrix Method for Coodinates Transformation written by Toshimi Taki (http://www.asahi-net.or.jp/~zs3t-tk).
+ The transformations are based on the paper Matrix Method for Coordinates Transformation written by Toshimi Taki (http://www.asahi-net.or.jp/~zs3t-tk).
 
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Library General Public
@@ -107,16 +107,11 @@ bool Dome::initProperties()
     IUFillSwitchVector(&PresetGotoSP, PresetGotoS, 3, getDeviceName(), "Goto", "", "Presets", IP_RW, ISR_1OFMANY, 0,
                        IPS_IDLE);
 
-    //    IUFillSwitch(&AutoParkS[0], "INDI_ENABLED", "Enable", ISS_OFF);
-    //    IUFillSwitch(&AutoParkS[1], "INDI_DISABLED", "Disable", ISS_ON);
-    //    IUFillSwitchVector(&AutoParkSP, AutoParkS, 2, getDeviceName(), "DOME_AUTOPARK", "Auto Park", OPTIONS_TAB, IP_RW,
-    //                       ISR_1OFMANY, 0, IPS_IDLE);
-
     // Active Devices
-    IUFillText(&ActiveDeviceT[0], "ACTIVE_TELESCOPE", "Telescope", "Telescope Simulator");
+    ActiveDeviceTP[0].fill("ACTIVE_TELESCOPE", "Telescope", "Telescope Simulator");
     //IUFillText(&ActiveDeviceT[1], "ACTIVE_WEATHER", "Weather", "WunderGround");
-    IUFillTextVector(&ActiveDeviceTP, ActiveDeviceT, 1, getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB,
-                     IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP.fill(getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP.load();
 
     // Use locking if telescope is unparked
     IUFillSwitch(&MountPolicyS[MOUNT_IGNORED], "MOUNT_IGNORED", "Mount ignored", ISS_ON);
@@ -223,13 +218,12 @@ bool Dome::initProperties()
 
     controller->initProperties();
 
-    IDSnoopDevice(ActiveDeviceT[0].text, "EQUATORIAL_EOD_COORD");
-    IDSnoopDevice(ActiveDeviceT[0].text, "GEOGRAPHIC_COORD");
-    IDSnoopDevice(ActiveDeviceT[0].text, "TELESCOPE_PARK");
+    const auto scope = ActiveDeviceTP[0].getText();
+    IDSnoopDevice(scope, "EQUATORIAL_EOD_COORD");
+    IDSnoopDevice(scope, "GEOGRAPHIC_COORD");
+    IDSnoopDevice(scope, "TELESCOPE_PARK");
     if (CanAbsMove())
-        IDSnoopDevice(ActiveDeviceT[0].text, "TELESCOPE_PIER_SIDE");
-
-    //IDSnoopDevice(ActiveDeviceT[1].text, "WEATHER_STATUS");
+        IDSnoopDevice(scope, "TELESCOPE_PIER_SIDE");
 
     setDriverInterface(DOME_INTERFACE);
 
@@ -261,8 +255,7 @@ void Dome::ISGetProperties(const char * dev)
     //  First we let our parent populate
     DefaultDevice::ISGetProperties(dev);
 
-    defineProperty(&ActiveDeviceTP);
-    loadConfig(true, "ACTIVE_DEVICES");
+    defineProperty(ActiveDeviceTP);
 
     ISState isMountIgnored = ISS_OFF;
     if (IUGetConfigSwitch(getDeviceName(), MountPolicySP.name, MountPolicyS[MOUNT_IGNORED].name, &isMountIgnored) == 0)
@@ -745,7 +738,7 @@ bool Dome::ISNewSwitch(const char * dev, const char * name, ISState * states, ch
             else
                 LOG_WARN("Mount Policy set to: Mount locks. This prevents the dome from parking when mount is unparked.");
             IDSetSwitch(&MountPolicySP, nullptr);
-            triggerSnoop(ActiveDeviceT[0].text, "TELESCOPE_PARK");
+            triggerSnoop(ActiveDeviceTP[0].getText(), "TELESCOPE_PARK");
             return true;
         }
         ////////////////////////////////////////////
@@ -796,20 +789,20 @@ bool Dome::ISNewText(const char * dev, const char * name, char * texts[], char *
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        if (strcmp(name, ActiveDeviceTP.name) == 0)
+        if (ActiveDeviceTP.isNameMatch(name))
         {
-            ActiveDeviceTP.s = IPS_OK;
-            IUUpdateText(&ActiveDeviceTP, texts, names, n);
-            IDSetText(&ActiveDeviceTP, nullptr);
+            ActiveDeviceTP.setState(IPS_OK);
+            ActiveDeviceTP.update(texts, names, n);
+            ActiveDeviceTP.apply();
 
-            IDSnoopDevice(ActiveDeviceT[0].text, "EQUATORIAL_EOD_COORD");
-            IDSnoopDevice(ActiveDeviceT[0].text, "TARGET_EOD_COORD");
-            IDSnoopDevice(ActiveDeviceT[0].text, "GEOGRAPHIC_COORD");
-            IDSnoopDevice(ActiveDeviceT[0].text, "TELESCOPE_PARK");
+            const auto scope = ActiveDeviceTP[0].getText();
+            IDSnoopDevice(scope, "EQUATORIAL_EOD_COORD");
+            IDSnoopDevice(scope, "TARGET_EOD_COORD");
+            IDSnoopDevice(scope, "GEOGRAPHIC_COORD");
+            IDSnoopDevice(scope, "TELESCOPE_PARK");
             if (CanAbsMove())
-                IDSnoopDevice(ActiveDeviceT[0].text, "TELESCOPE_PIER_SIDE");
-            //IDSnoopDevice(ActiveDeviceT[1].text, "WEATHER_STATUS");
-
+                IDSnoopDevice(scope, "TELESCOPE_PIER_SIDE");
+            saveConfig(ActiveDeviceTP);
             return true;
         }
     }
@@ -1044,7 +1037,7 @@ bool Dome::saveConfigItems(FILE * fp)
 {
     DefaultDevice::saveConfigItems(fp);
 
-    IUSaveConfigText(fp, &ActiveDeviceTP);
+    ActiveDeviceTP.save(fp);
     IUSaveConfigSwitch(fp, &MountPolicySP);
     IUSaveConfigNumber(fp, &PresetNP);
     IUSaveConfigNumber(fp, &DomeParamNP);
@@ -1278,7 +1271,7 @@ bool Dome::GetTargetAz(double &Az, double &Alt, double &minAz, double &maxAz)
 
     if (HaveLatLong == false)
     {
-        triggerSnoop(ActiveDeviceT[0].text, "GEOGRAPHIC_COORD");
+        triggerSnoop(ActiveDeviceTP[0].getText(), "GEOGRAPHIC_COORD");
         LOG_WARN( "Geographic coordinates are not yet defined, triggering snoop...");
         return false;
     }
@@ -1305,7 +1298,7 @@ bool Dome::GetTargetAz(double &Az, double &Alt, double &minAz, double &maxAz)
     {
         if(OTASideS[DM_OTA_SIDE_HA].s == ISS_ON || (UseHourAngle && OTASideS[DM_OTA_SIDE_MOUNT].s == ISS_ON))
         {
-            // Note if the telescope points West, OTA is at east of the pier, and viceversa.
+            // Note if the telescope points West, OTA is at east of the pier, and vice-versa.
             if(hourAngle > 0)
                 OTASide = -1;
             else

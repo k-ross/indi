@@ -46,11 +46,14 @@ extern "C"
 inline static size_t indi_strlcpy(char * dst, const char * src, size_t maxlen)
 {
     const size_t srclen = strlen(src);
-    if (srclen + 1 < maxlen) {
+    if (srclen + 1 < maxlen)
+    {
         memcpy(dst, src, srclen + 1);
-    } else if (maxlen != 0) {
+    }
+    else if (maxlen != 0)
+    {
         memcpy(dst, src, maxlen - 1);
-        dst[maxlen-1] = '\0';
+        dst[maxlen - 1] = '\0';
     }
     return srclen;
 }
@@ -61,8 +64,9 @@ inline static size_t indi_strlcpy(char * dst, const char * src, size_t maxlen)
 // C++
 #ifdef __cplusplus
 
-#ifdef _WINDOWS
-typedef unsigned int mode_t;
+// JM 2023.11.25: Not available in Vanilla Windows (Visual Studio 2022) but available with MINGW? How does this affect CYGWIN?
+#if defined (_WIN32) && !defined (__MINGW32__)
+typedef int mode_t;
 #endif
 
 namespace INDI

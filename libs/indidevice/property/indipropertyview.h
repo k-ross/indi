@@ -231,6 +231,7 @@ struct PropertyView: PROPERTYVIEW_BASE_ACCESS WidgetTraits<T>::PropertyType
         }
 
     public: // only driver side
+        bool load();
         void save(FILE *f) const;                              /* outside implementation */
 
         void vapply(const char *format, va_list args)
@@ -470,6 +471,11 @@ struct WidgetView<IText>: PROPERTYVIEW_BASE_ACCESS IText
         bool isLabelMatch(const std::string &otherLabel) const
         {
             return getLabel() == otherLabel;
+        }
+        
+        bool isEmpty() const
+        {
+            return getText()[0] == '\0';
         }
 
     public:
@@ -970,7 +976,7 @@ struct WidgetView<IBLOB>: PROPERTYVIEW_BASE_ACCESS IBLOB
         }
         void setFormat(const std::string &format)
         {
-            setLabel(format.data());
+            setFormat(format.data());
         }
 
         void setBlob(void *blob)
@@ -1160,15 +1166,45 @@ inline void PropertyView<T>::setAux(void *user)
 }
 
 template <>
-inline void PropertyView<IText>::save(FILE *f) const
+inline bool PropertyView<INumber>::load()
 {
-    IUSaveConfigText(f, this);
+    return IULoadConfigNumber(this) == nnp;
+}
+
+template <>
+inline bool PropertyView<ISwitch>::load()
+{
+    return IULoadConfigSwitch(this) == nsp;
+}
+
+template <>
+inline bool PropertyView<ILight>::load()
+{
+    return false;
+}
+
+template <>
+inline bool PropertyView<IBLOB>::load()
+{
+    return false;
+}
+
+template <>
+inline bool PropertyView<IText>::load()
+{
+    return IULoadConfigText(this) == ntp;
 }
 
 template <>
 inline void PropertyView<INumber>::save(FILE *f) const
 {
     IUSaveConfigNumber(f, this);
+}
+
+template <>
+inline void PropertyView<IText>::save(FILE *f) const
+{
+    IUSaveConfigText(f, this);
 }
 
 template <>

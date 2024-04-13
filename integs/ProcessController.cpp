@@ -89,7 +89,7 @@ void ProcessController::start(const std::string & path, const std::vector<std::s
     }
     if (pid == 0) {
         std::string error = "exec " + path;
-
+        // TODO : Close all file descriptor
         execv(fullArgs[0], (char * const *) fullArgs);
 
         // Child goes here....
@@ -101,6 +101,13 @@ void ProcessController::start(const std::string & path, const std::vector<std::s
 void ProcessController::waitProcessEnd(int exitCode) {
     join();
     expectExitCode(exitCode);
+}
+
+void ProcessController::kill() {
+    if (pid == -1) {
+        return;
+    }
+    ::kill(pid, SIGKILL);
 }
 
 void ProcessController::join() {
@@ -155,7 +162,7 @@ void ProcessController::expectExitCode(int e) {
             throw std::runtime_error(cmd + " got signal " + strsignal(WTERMSIG(status)));
         }
         // Not sure this is possible at all
-        throw std::runtime_error(cmd + " exited abnormaly");
+        throw std::runtime_error(cmd + " exited abnormally");
     }
     int actual = WEXITSTATUS(status);
     if (actual != e) {

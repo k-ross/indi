@@ -123,6 +123,11 @@ class Property
         bool isLabelMatch(const char *otherLabel) const;
         bool isLabelMatch(const std::string &otherLabel) const;
 
+        bool isDeviceNameMatch(const char *otherDeviceName) const;
+        bool isDeviceNameMatch(const std::string &otherDeviceName) const;
+
+        bool isTypeMatch(INDI_PROPERTY_TYPE otherType) const;
+
     public:
         void onUpdate(const std::function<void()> &callback);
 
@@ -131,6 +136,7 @@ class Property
         bool hasUpdateCallback() const;
 
     public:
+        bool load();
         void save(FILE *fp) const;
 
     public:
@@ -170,28 +176,55 @@ class Property
         operator const INDI::Property *() const;
 
         INDI_DEPRECATED("Do not use INDI::Property as pointer.")
-        operator INDI::PropertyViewNumber *() const { return getNumber(); }
+        operator INDI::PropertyViewNumber *() const
+        {
+            return getNumber();
+        }
 
         INDI_DEPRECATED("Do not use INDI::Property as pointer.")
-        operator INDI::PropertyViewText   *() const { return getText(); }
+        operator INDI::PropertyViewText   *() const
+        {
+            return getText();
+        }
 
         INDI_DEPRECATED("Do not use INDI::Property as pointer.")
-        operator INDI::PropertyViewSwitch *() const { return getSwitch(); }
+        operator INDI::PropertyViewSwitch *() const
+        {
+            return getSwitch();
+        }
 
         INDI_DEPRECATED("Do not use INDI::Property as pointer.")
-        operator INDI::PropertyViewLight  *() const { return getLight(); }
+        operator INDI::PropertyViewLight  *() const
+        {
+            return getLight();
+        }
 
         INDI_DEPRECATED("Do not use INDI::Property as pointer.")
-        operator INDI::PropertyViewBlob   *() const { return getBLOB(); }
+        operator INDI::PropertyViewBlob   *() const
+        {
+            return getBLOB();
+        }
 
         INDI_DEPRECATED("Use comparison to true.")
-        bool operator != (std::nullptr_t) const     { return  isValid(); }
+        bool operator != (std::nullptr_t) const
+        {
+            return  isValid();
+        }
 
         INDI_DEPRECATED("Use comparison to false.")
-        bool operator == (std::nullptr_t) const     { return !isValid(); }
+        bool operator == (std::nullptr_t) const
+        {
+            return !isValid();
+        }
 
-        operator bool()                   const     { return  isValid(); }
-        operator bool()                             { return  isValid(); }
+        operator bool()                   const
+        {
+            return  isValid();
+        }
+        operator bool()
+        {
+            return  isValid();
+        }
 #endif
 
     protected:

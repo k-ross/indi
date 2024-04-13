@@ -57,7 +57,7 @@ bool UranusMeteo::initProperties()
 
     // To distinguish them from GPS properties.
     WI::UpdatePeriodNP.setLabel("Weather Update");
-    WI::RefreshSP.setLabel("Weahter Refresh");
+    WI::RefreshSP.setLabel("Weather Refresh");
 
     addAuxControls();
 
@@ -238,13 +238,13 @@ IPState UranusMeteo::updateGPS()
             if (GPSNP[GPSFix].getValue() < 3)
                 return IPS_BUSY;
 
-            LocationN[LOCATION_LATITUDE].value  = GPSNP[Latitude].getValue();
-            LocationN[LOCATION_LONGITUDE].value = GPSNP[Longitude].getValue();
+            LocationNP[LOCATION_LATITUDE].value  = GPSNP[Latitude].getValue();
+            LocationNP[LOCATION_LONGITUDE].value = GPSNP[Longitude].getValue();
             // 2017-11-15 Jasem: INDI Longitude is 0 to 360 East+
-            if (LocationN[LOCATION_LONGITUDE].value < 0)
-                LocationN[LOCATION_LONGITUDE].value += 360;
+            if (LocationNP[LOCATION_LONGITUDE].value < 0)
+                LocationNP[LOCATION_LONGITUDE].value += 360;
 
-            LocationN[LOCATION_ELEVATION].value = SensorNP[BarometricAltitude].getValue();
+            LocationNP[LOCATION_ELEVATION].value = SensorNP[BarometricAltitude].getValue();
 
             // Get GPS Time
             char ts[32] = {0};
@@ -257,22 +257,21 @@ IPState UranusMeteo::updateGPS()
             auto utcOffset = local->tm_gmtoff / 3600.0;
             // Convert to UTC time
             time_t utcTime = raw_time - utcOffset * 3600.0;
+            // Store in GPS
+            m_GPSTime = utcTime;
             // Get tm struct in UTC
             struct tm *utc = gmtime(&utcTime);
             // Format it
             strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", utc);
-            IUSaveText(&TimeT[0], ts);
+            IUSaveText(&TimeTP[0], ts);
 
             snprintf(ts, sizeof(ts), "%.2f", utcOffset);
-            IUSaveText(&TimeT[1], ts);
+            IUSaveText(&TimeTP[1], ts);
 
             // Set UTC offset in device
             char command[PEGASUS_LEN] = {0};
             snprintf(command, PEGASUS_LEN, "C3:%d", static_cast<int>(utcOffset));
             sendCommand(command, response);
-
-            // N.B. FIXME, does not work.
-            setSystemTime(raw_time);
 
             return IPS_OK;
         }
@@ -305,7 +304,7 @@ bool UranusMeteo::ISNewSwitch(const char * dev, const char * name, ISState * sta
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
-        if (processSwitch(dev, name, states, names, n))
+        if (WI::processSwitch(dev, name, states, names, n))
             return true;
     }
 
@@ -338,7 +337,7 @@ bool UranusMeteo::ISNewNumber(const char * dev, const char * name, double values
             return true;
         }
 
-        if (processNumber(dev, name, values, names, n))
+        if (WI::processNumber(dev, name, values, names, n))
             return true;
     }
 
@@ -528,31 +527,6 @@ bool UranusMeteo::readTwilight()
 bool UranusMeteo::readConfig()
 {
     return false;
-}
-
-//////////////////////////////////////////////////////////////////////
-///
-//////////////////////////////////////////////////////////////////////
-bool UranusMeteo::setSystemTime(time_t &raw_time)
-{
-#ifdef __linux__
-#if defined(__GNU_LIBRARY__)
-#if (__GLIBC__ >= 2) && (__GLIBC_MINOR__ > 30)
-    timespec sTime = {};
-    sTime.tv_sec = raw_time;
-    auto rc = clock_settime(CLOCK_REALTIME, &sTime);
-    if (rc)
-        LOGF_WARN("Failed to update system time: %s", strerror(rc));
-#else
-    stime(&raw_time);
-#endif
-#else
-    stime(&raw_time);
-#endif
-#else
-    INDI_UNUSED(raw_time);
-#endif
-    return true;
 }
 
 //////////////////////////////////////////////////////////////////////

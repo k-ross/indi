@@ -39,6 +39,11 @@ class InMemoryDatabase
         /// \return True if an entry already exists within the required tolerance
         bool CheckForDuplicateSyncPoint(const AlignmentDatabaseEntry &CandidateEntry, double Tolerance = 0.1) const;
 
+        /// \brief Remove a sync point that falls within the tolerance of a candidate point.
+        /// \param[in] CandidateEntry The candidate entry to check
+        /// \param[in] Tolerance The % tolerance used in the checking process (default 0.1%)
+        void RemoveSyncPoint(const AlignmentDatabaseEntry &CandidateEntry, double Tolerance = 0.1);
+
         /// \brief Get a reference to the in memory database.
         /// \return A reference to the in memory database.
         AlignmentDatabaseType &GetAlignmentDatabase()
@@ -47,7 +52,7 @@ class InMemoryDatabase
         }
 
         /// \brief Get the database reference position
-        /// \param[in] Position A pointer to a IGeographicCoordinates object to retunr the current position in
+        /// \param[in] Position A pointer to a IGeographicCoordinates object to return the current position in
         /// \return True if successful
         bool GetDatabaseReferencePosition(IGeographicCoordinates &Position);
 

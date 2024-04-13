@@ -33,6 +33,7 @@
 #include "indipropertyswitch.h"
 #include "inditimer.h"
 #include "indielapsedtimer.h"
+#include "fitskeyword.h"
 #include "dsp/manager.h"
 #include "stream/streammanager.h"
 
@@ -62,6 +63,7 @@ namespace INDI
 {
 
 class StreamManager;
+class XISFWrapper;
 
 /**
  * \class CCD
@@ -89,7 +91,7 @@ class StreamManager;
  * It requires the client to explicitly support websockets. It is not recommended to use this
  * approach unless for the most demanding and FPS sensitive tasks.
  *
- * INDI::CCD and INDI::StreamManager both upload frames asynchrounously in a worker thread.
+ * INDI::CCD and INDI::StreamManager both upload frames asynchronously in a worker thread.
  * The CCD Buffer data is protected by the ccdBufferLock mutex. When reading the camera data
  * and writing to the buffer, it must be first locked by the mutex. After the write is complete
  * release the lock. For example:
@@ -101,7 +103,7 @@ class StreamManager;
  * ExposureComplete();
  * \endcode
  *
- * Similiary, before calling Streamer->newFrame, the buffer needs to be protected in a similiar fashion using
+ * Similarly, before calling Streamer->newFrame, the buffer needs to be protected in a similar fashion using
  * the same ccdBufferLock mutex.
  *
  * \example CCD Simulator
@@ -303,7 +305,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool StartExposure(float duration);
 
         /**
-         * \brief Uploads target Chip exposed buffer as FITS to the client. Dervied classes should class
+         * \brief Uploads target Chip exposed buffer as FITS to the client. Derived classes should class
          * this function when an exposure is complete.
          * @param targetChip chip that contains upload image data
          * \note This function is not implemented in CCD, it must be implemented in the child class
@@ -412,7 +414,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool UpdateGuiderFrameType(CCDChip::CCD_FRAME fType);
 
         /**
-         * \brief Setup CCD paramters for primary CCD. Child classes call this function to update
+         * \brief Setup CCD parameters for primary CCD. Child classes call this function to update
          * CCD parameters
          * \param x Frame X coordinates in pixels.
          * \param y Frame Y coordinates in pixels.
@@ -423,7 +425,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual void SetCCDParams(int x, int y, int bpp, float xf, float yf);
 
         /**
-         * \brief Setup CCD paramters for guide head CCD. Child classes call this function to update
+         * \brief Setup CCD parameters for guide head CCD. Child classes call this function to update
          * CCD parameters
          * \param x Frame X coordinates in pixels.
          * \param y Frame Y coordinates in pixels.
@@ -485,7 +487,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool SetCaptureFormat(uint8_t index);
 
         /**
-         * \brief Add FITS keywords to a fits file
+         * \brief Generate FITS keywords that will be added to FIST/XISF file
          * \param targetChip The target chip to extract the keywords from.
          * \note In additional to the standard FITS keywords, this function write the following
          * keywords the FITS file:
@@ -505,7 +507,7 @@ class CCD : public DefaultDevice, GuiderInterface
          * To add additional information, override this function in the child class and ensure to call
          * CCD::addFITSKeywords.
          */
-        virtual void addFITSKeywords(CCDChip * targetChip);
+        virtual void addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKeywords);
 
         /** A function to just remove GCC warnings about deprecated conversion */
         void fits_update_key_s(fitsfile * fptr, int type, std::string name, void * p, std::string explanation, int * status);
@@ -656,10 +658,7 @@ class CCD : public DefaultDevice, GuiderInterface
          * + **Filter Wheel**: Listens for FILTER_SLOT and FILTER_NAME properties.
          * + **SQM**: Listens for sky quality meter magnitude.
          */
-        ITextVectorProperty ActiveDeviceTP;
-
-        // JJ ed 2019-12-10
-        IText ActiveDeviceT[5] {};
+        INDI::PropertyText ActiveDeviceTP {5};
         enum
         {
             ACTIVE_TELESCOPE,
@@ -703,11 +702,12 @@ class CCD : public DefaultDevice, GuiderInterface
         INDI::PropertySwitch CaptureFormatSP {0};
 
         /// Specifies Driver image encoding format (FITS, Native, JPG, ..etc)
-        INDI::PropertySwitch EncodeFormatSP {2};
+        INDI::PropertySwitch EncodeFormatSP {3};
         enum
         {
             FORMAT_FITS,     /*!< Save Image as FITS format  */
-            FORMAT_NATIVE    /*!< Save Image as the native format of the camera itself. */
+            FORMAT_NATIVE,   /*!< Save Image as the native format of the camera itself. */
+            FORMAT_XISF      /*!< Save Image as XISF format  */
         };
 
         ISwitch UploadS[3];
@@ -725,8 +725,8 @@ class CCD : public DefaultDevice, GuiderInterface
         INDI::PropertyNumber ScopeInfoNP {2};
         enum
         {
-            FocalLength,
-            Aperture
+            FOCAL_LENGTH,
+            APERTURE
         };
 
         // Websocket Support
@@ -765,13 +765,12 @@ class CCD : public DefaultDevice, GuiderInterface
         double m_UploadTime = { 0 };
         std::chrono::system_clock::time_point FastExposureToggleStartup;
 
-        // FITS Header
-        IText FITSHeaderT[2] {};
-        ITextVectorProperty FITSHeaderTP;
+        INDI::PropertyText FITSHeaderTP {3};
         enum
         {
-            FITS_OBSERVER,
-            FITS_OBJECT
+            KEYWORD_NAME,
+            KEYWORD_VALUE,
+            KEYWORD_COMMENT,
         };
 
     private:
@@ -781,6 +780,8 @@ class CCD : public DefaultDevice, GuiderInterface
         std::string m_ConfigCaptureFormatName;
         int m_ConfigEncodeFormatIndex {-1};
         int m_ConfigFastExposureIndex {INDI_DISABLED};
+
+        std::map<std::string, FITSRecord> m_CustomFITSKeywords;
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Utility Functions

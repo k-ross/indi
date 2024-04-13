@@ -110,7 +110,7 @@ class StreamManagerPrivate
         bool ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n);
         bool ISNewNumber(const char * dev, const char * name, double values[], char * names[], int n);
 
-        void newFrame(const uint8_t * buffer, uint32_t nbytes);
+        void newFrame(const uint8_t * buffer, uint32_t nbytes, uint64_t timestamp);
 
         bool updateProperties();
         bool setStream(bool enable);
@@ -146,7 +146,7 @@ class StreamManagerPrivate
          * @brief recordStream Calls the backend recorder to record a single frame.
          * @param deltams time in milliseconds since last frame
          */
-        bool recordStream(const uint8_t *buffer, uint32_t nbytes, double deltams);
+        bool recordStream(const uint8_t *buffer, uint32_t nbytes, double deltams, uint64_t timestamp);
 
         void getStreamFrame(uint16_t * x, uint16_t * y, uint16_t * w, uint16_t * h) const;
         void setStreamFrame(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
@@ -208,7 +208,7 @@ class StreamManagerPrivate
         INDI::PropertySwitch EncoderSP {2};
         enum { ENCODER_RAW, ENCODER_MJPEG };
 
-        // Recorder Selector. Static but should be implmeneted as a dynamic plugin interface
+        // Recorder Selector. Static but should be implemented as a dynamic plugin interface
         INDI::PropertySwitch RecorderSP {2};
         enum { RECORDER_RAW, RECORDER_OGV };
 
@@ -248,6 +248,7 @@ class StreamManagerPrivate
         typedef struct
         {
             double time;
+            uint64_t timestamp;
             std::vector<uint8_t> frame;
         } TimeFrame;
 

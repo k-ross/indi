@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace Connection
 {
@@ -45,7 +46,7 @@ class Serial : public Interface
          */
         typedef enum { B_9600, B_19200, B_38400, B_57600, B_115200, B_230400 } BaudRate;
 
-        Serial(INDI::DefaultDevice *dev);
+        Serial(INDI::DefaultDevice *dev, IPerm permission = IP_RW);
         virtual ~Serial();
 
         virtual bool Connect() override;
@@ -190,6 +191,8 @@ class Serial : public Interface
         uint8_t wordSize = 8;
         uint8_t parity = 0;
         uint8_t stopBits = 1;
+
+        IPerm m_Permission = IP_RW;
 
         std::string m_ConfigPort;
         int m_ConfigBaudRate {-1};

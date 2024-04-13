@@ -1,6 +1,29 @@
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     INSTALL(FILES 99-indi_auxiliary.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
 ENDIF()
+# ########## WandererCover V4-EC###############
+SET(indi_wanderercover_v4_ec_SRC
+    wanderer_cover_v4_ec.cpp)
+
+add_executable(indi_wanderercover_v4_ec ${indi_wanderercover_v4_ec_SRC})
+target_link_libraries(indi_wanderercover_v4_ec indidriver)
+install(TARGETS indi_wanderercover_v4_ec RUNTIME DESTINATION bin)
+
+# ########## Wanderer Box Plus V3 ###############
+SET(indi_wandererbox_plus_v3_SRC
+    wandererbox_plus_v3.cpp)
+
+add_executable(indi_wandererbox_plus_v3 ${indi_wandererbox_plus_v3_SRC})
+target_link_libraries(indi_wandererbox_plus_v3 indidriver)
+install(TARGETS indi_wandererbox_plus_v3 RUNTIME DESTINATION bin)
+
+# ########## Wanderer Box Pro V3 ###############
+SET(indi_wandererbox_pro_v3_SRC
+    wandererbox_pro_v3.cpp)
+
+add_executable(indi_wandererbox_pro_v3 ${indi_wandererbox_pro_v3_SRC})
+target_link_libraries(indi_wandererbox_pro_v3 indidriver)
+install(TARGETS indi_wandererbox_pro_v3 RUNTIME DESTINATION bin)
 
 # ########## Wanderer Cover V3 ###############
 SET(wandererCover_SRC
@@ -100,6 +123,15 @@ SET(pegasus_ppba_SRC
 add_executable(indi_pegasus_ppba ${pegasus_ppba_SRC})
 target_link_libraries(indi_pegasus_ppba indidriver)
 install(TARGETS indi_pegasus_ppba RUNTIME DESTINATION bin)
+
+
+# ########## Pegasus Saddle Power Box  Driver ###############
+SET(pegasus_spb_SRC
+    pegasus_spb.cpp)
+
+add_executable(indi_pegasus_spb ${pegasus_spb_SRC})
+target_link_libraries(indi_pegasus_spb indidriver)
+install(TARGETS indi_pegasus_spb RUNTIME DESTINATION bin)
 
 # ########## RB Focus Excalibur ###############
 SET(Excalibur_SRC
@@ -224,6 +256,30 @@ add_executable(indi_usbdewpoint ${usb_dewpoint_SRC})
 target_link_libraries(indi_usbdewpoint indidriver)
 install(TARGETS indi_usbdewpoint RUNTIME DESTINATION bin)
 
+# ########## myDewController Pro Driver ###############
+SET(myDewControllerPro_SRC
+    myDewControllerPro.cpp)
+
+add_executable(indi_myDewControllerPro ${myDewControllerPro_SRC})
+target_link_libraries(indi_myDewControllerPro indidriver)
+install(TARGETS indi_myDewControllerPro RUNTIME DESTINATION bin)
+
+# ########## CheapoDC Driver ###############
+SET(cheapodc_SRC
+    cheapodc.cpp)
+
+add_executable(indi_cheapodc ${cheapodc_SRC})
+target_link_libraries(indi_cheapodc indidriver)
+install(TARGETS indi_cheapodc RUNTIME DESTINATION bin)
+
+# ########## MYDCP4ESP32 Driver ###############
+SET(mydcp4esp32_SRC
+    mydcp4esp32.cpp)
+
+add_executable(indi_mydcp4esp32 ${mydcp4esp32_SRC})
+target_link_libraries(indi_mydcp4esp32 indidriver)
+install(TARGETS indi_mydcp4esp32 RUNTIME DESTINATION bin)
+
 # ########## Deep Sky Dad FP1 ###############
 SET(deepskydad_fp1_SRC
     deepskydad_fp1.cpp)
@@ -231,3 +287,31 @@ SET(deepskydad_fp1_SRC
 add_executable(indi_deepskydad_fp1 ${deepskydad_fp1_SRC})
 target_link_libraries(indi_deepskydad_fp1 indidriver)
 install(TARGETS indi_deepskydad_fp1 RUNTIME DESTINATION bin)
+
+# ########## GIOTTO ###############
+SET(giotto_SRC
+    giotto.cpp
+    ../focuser/primalucacommandset.cpp
+)
+
+add_executable(indi_giotto ${giotto_SRC})
+target_link_libraries(indi_giotto indidriver)
+install(TARGETS indi_giotto RUNTIME DESTINATION bin)
+
+# ########## ALTO ###############
+SET(alto_SRC
+    alto.cpp
+    ../focuser/primalucacommandset.cpp
+)
+
+add_executable(indi_alto ${alto_SRC})
+target_link_libraries(indi_alto indidriver)
+install(TARGETS indi_alto RUNTIME DESTINATION bin)
+
+# ########## DragonLIGHT ###############
+SET(dragonlight_SRC
+    dragonlight.cpp)
+
+add_executable(indi_dragon_light ${dragonlight_SRC})
+target_link_libraries(indi_dragon_light indidriver ${HTTPLIB_LIBRARY})
+install(TARGETS indi_dragon_light RUNTIME DESTINATION bin)

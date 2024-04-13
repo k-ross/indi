@@ -21,7 +21,6 @@
 #include "indibase.h"
 #include "indiproperty.h"
 #include "indiproperties.h"
-#include "indiutility.h"
 
 #include <string>
 #include <vector>
@@ -38,7 +37,7 @@
 /** @class INDI::BaseDevice
  *  @brief Class to provide basic INDI device functionality.
  *
- *  INDI::BaseDevice is the base device for all INDI devices and contains a list of all properties defined by the device either explicity or via a skeleton file.
+ *  INDI::BaseDevice is the base device for all INDI devices and contains a list of all properties defined by the device either explicitly or via a skeleton file.
  *  You don't need to subclass INDI::BaseDevice class directly, it is inheritied by INDI::DefaultDevice which takes care of building a standard INDI device. Moreover, INDI::BaseClient
  *  maintains a list of INDI::BaseDevice objects as they get defined from the INDI server, and those objects may be accessed to retrieve information on the object properties or message log.
  *
@@ -70,6 +69,14 @@ class BaseDevice
         {
             INDI_ENABLED,
             INDI_DISABLED
+        };
+
+        /*! Used for watchProperty callback method. */
+        enum WATCH
+        {
+            WATCH_NEW = 0,        /*!< Applies to discovered properties only. */
+            WATCH_UPDATE,         /*!< Applies to updated properties only. */
+            WATCH_NEW_OR_UPDATE   /*!< Applies when a property appears or is updated, i.e. both of the above. */
         };
 
         /** @brief The DRIVER_INTERFACE enum defines the class of devices the driver implements. A driver may implement one or more interfaces. */
@@ -105,20 +112,23 @@ class BaseDevice
          */
         void registerProperty(const INDI::Property &property);
         void registerProperty(const INDI::Property &property,
-                              INDI_PROPERTY_TYPE type); // backward compatiblity (PentaxCCD, PkTriggerCordCCD)
+                              INDI_PROPERTY_TYPE type); // backward compatibility (PentaxCCD, PkTriggerCordCCD)
 
         /** @brief Remove a property
          *  @param name name of property to be removed. Pass NULL to remove the whole device.
          *  @param errmsg buffer to store error message.
-         *  @return 0 if successul, -1 otherwise.
+         *  @return 0 if successful, -1 otherwise.
          */
         int removeProperty(const char *name, char *errmsg);
 
         /** @brief Call the callback function if property is available.
          *  @param name of property.
          *  @param callback as an argument of the function you can use INDI::PropertyNumber, INDI::PropertySwitch etc.
+         *  @param watch you can decide whether the callback should be executed only once (WATCH_NEW) on discovery of the property or
+         *  also on every change of the value (WATCH_UPDATE) or both (WATCH_NEW_OR_UPDATE)
+         *  @note the behavior is analogous to BaseMediator::newProperty/updateProperty
          */
-        void watchProperty(const char *name, const std::function<void (INDI::Property)> &callback);
+        void watchProperty(const char *name, const std::function<void (INDI::Property)> &callback, WATCH watch = WATCH_NEW);
 
         /** @brief Return a property and its type given its name.
          *  @param name of property to be found.
@@ -229,7 +239,7 @@ class BaseDevice
 
         /** @brief getDriverInterface returns ORed values of @ref INDI::BaseDevice::DRIVER_INTERFACE "DRIVER_INTERFACE". It presents the device classes supported by the driver.
          *  @return driver device interface descriptor.
-         *  @note For example, to know if the driver supports CCD interface, check the retruned value:
+         *  @note For example, to know if the driver supports CCD interface, check the returned value:
          *  @code{.cpp}
          *  if (device.getDriverInterface() & CCD_INTERFACE)
          *       cout << "We received a camera!" << endl;
@@ -294,11 +304,6 @@ class BaseDevice
         }
 
     protected:
-        BaseDevice *operator&()
-        {
-            return this;
-        }
-
         friend class AbstractBaseClientPrivate;
         std::shared_ptr<BaseDevicePrivate> d_ptr;
         BaseDevice(BaseDevicePrivate &dd);

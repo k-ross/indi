@@ -25,6 +25,27 @@
     ===========================================
 
     Version not yet updated/No INDI release:
+    Version 1.22
+    - fixed #:AW#" and ":MP#" commands by using getCommandSingleCharResponse instead of sendOnStepCommandBlind
+    Version 1.21
+    - fixed Onstep returning '9:9' when 9 star alignment is achieved thanks to Howard Dutton
+    Version 1.20
+    - fixed wrong messages due to different return with OnStepX
+    - fixed Focuser Temperature not shown on Ekos
+    - fixed Weather settings (P/T/Hr) when no sensor present
+    - minor typos
+    Version 1.19
+    - fixed typo on debug information saying error instead of nbchar causing confusion
+    - fixed Autoflip Off update
+    - fixed Elevation Limits update (was not read from OnStep) and format set to integer and gage for setup
+    - fixed minutes passed meridian not showing actual values
+    - fixed missing slewrates defineProperty and deleteProperty causing redefinitions of overrides
+    - todo focuser stops working after some time ??? could not yet reproduce
+    - fixed poll and update slew rates 
+    - todo poll and update maximum slew speed SmartWebServer=>Settings
+    Version 1.18
+    - implemented Focuser T° compensation in FOCUSER TAB
+    - Minor fixes
     Version 1.17
     - fixed setMaxElevationLimit / setMinElevationLimit
     Version 1.16
@@ -58,7 +79,7 @@
     Version 1.10: (finalized: INDI 1.9.1)
     - Weather support for setting temperature/humidity/pressure, values will be overridden in OnStep by any sensor values.
     - Ability to swap primary focuser.
-    - High precision on location, and not overridding GPS even when marked for Mount > KStars.
+    - High precision on location, and not overriding GPS even when marked for Mount > KStars.
     - Added Rotator & De-Rotator Support
     - TMC_SPI status reported (RAW) on the Status Tab. (ST = Standstill, Ox = open load A/B, Gx = grounded A/B, OT = Overtemp Shutdown, PW = Overtemp Prewarning)
     - Manage OnStep Auxiliary Feature Names in Output Tab
@@ -98,7 +119,7 @@
     - James lan Focuser Code
     - James lan PEC
     - James Lan Alignment
-    - Azwing set all com variable legth to RB_MAX_LEN otherwise crash due to overflow
+    - Azwing set all com variable length to RB_MAX_LEN otherwise crash due to overflow
     - Azwing set local variable size to RB_MAX_LEN otherwise erased by overflow preventing Align and other stuf to work
     - James Lan Align Tab implementation
     - Azwing Removed Alignment in main tab
@@ -134,16 +155,6 @@
 
 #define RB_MAX_LEN 64
 #define CMD_MAX_LEN 32
-
-#define setParkOnStep(fd)  write(fd, "#:hQ#", 5)
-#define ReticPlus(fd)      write(fd, "#:B+#", 5)
-#define ReticMoins(fd)     write(fd, "#:B-#", 5)
-#define OnStepalign1(fd)   write(fd, "#:A1#", 5)
-#define OnStepalign2(fd)   write(fd, "#:A2#", 5)
-#define OnStepalign3(fd)   write(fd, "#:A3#", 5)
-#define OnStepalignOK(fd)   write(fd, "#:A+#", 5)
-#define OnStep
-#define RB_MAX_LEN 64
 
 #define PORTS_COUNT 10
 #define STARTING_PORT 0
@@ -273,7 +284,7 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         int getCommandDoubleResponse(int fd, double *value, char *data,
                                      const char *cmd); //Reimplemented from getCommandString Will return a double, and raw value.
         int getCommandIntResponse(int fd, int *value, char *data, const char *cmd);
-        int  setMinElevationLimit(int fd, int max);
+        int  setMinElevationLimit(int fd, int min);
         int OSUpdateFocuser(); //Return = 0 good, -1 = Communication error
         int OSUpdateRotator(); //Return = 0 good, -1 = Communication error
 
@@ -293,7 +304,7 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         INumber ObjectNoN[1];
 
         INumberVectorProperty MaxSlewRateNP;
-        INumber MaxSlewRateN[2];
+        INumber MaxSlewRateN[1];
 
         INumberVectorProperty BacklashNP;    //test
         INumber BacklashN[2];    //Test
@@ -321,6 +332,18 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         bool OSFocuser1 = false;
         ISwitchVectorProperty OSFocus1InitializeSP;
         ISwitch OSFocus1InitializeS[4];
+        
+        // Focus T° Compensation
+        INumberVectorProperty FocusTemperatureNP;
+        INumber FocusTemperatureN[2];
+        
+        ISwitchVectorProperty TFCCompensationSP;
+        ISwitch TFCCompensationS[2];
+        INumberVectorProperty TFCCoefficientNP;
+        INumber TFCCoefficientN[1];
+        INumberVectorProperty TFCDeadbandNP;
+        INumber TFCDeadbandN[1];
+        // End Focus T° Compensation
 
         int OSNumFocusers = 0;
         ISwitchVectorProperty OSFocusSelectSP;
@@ -398,7 +421,7 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         ISwitchVectorProperty OSNAlignStarsSP;
         ISwitch OSNAlignStarsS[9];
         ISwitchVectorProperty OSNAlignSP;
-        ISwitch OSNAlignS[4];
+        ISwitch OSNAlignS[2];
         ISwitchVectorProperty OSNAlignWriteSP;
         ISwitch OSNAlignWriteS[1];
         ISwitchVectorProperty OSNAlignPolarRealignSP;

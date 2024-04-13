@@ -22,6 +22,7 @@
 #include "base64.h"
 #include "config.h"
 #include "indicom.h"
+#include "sharedblob.h"
 #include "indistandardproperty.h"
 #include "locale_compat.h"
 
@@ -460,6 +461,15 @@ int BaseDevice::buildProp(const INDI::LilXmlElement &root, char *errmsg, bool is
         case INDI_BLOB:
         {
             INDI::PropertyBlob typedProperty {0};
+            typedProperty.setBlobDeleter([](void * &blob)
+            {
+#ifdef ENABLE_INDI_SHARED_MEMORY
+                IDSharedBlobFree(blob);
+#else
+                free(blob);
+#endif
+                blob = nullptr;
+            });
             for (const auto &element : root.getElementsByTagName("defBLOB"))
             {
                 INDI::WidgetViewBlob widget;
@@ -867,7 +877,7 @@ void BaseDevice::doMessage(XMLEle *msg)
     if (time_stamp)
         snprintf(msgBuffer, MAXRBUF, "%s: %s ", valuXMLAtt(time_stamp), valuXMLAtt(message));
     else
-        snprintf(msgBuffer, MAXRBUF, "%s: %s ", timestamp(), valuXMLAtt(message));
+        snprintf(msgBuffer, MAXRBUF, "%s: %s ", indi_timestamp(), valuXMLAtt(message));
 
     std::string finalMsg = msgBuffer;
 
@@ -907,10 +917,18 @@ bool BaseDevice::isValid() const
     return d->valid;
 }
 
-void BaseDevice::watchProperty(const char *name, const std::function<void(INDI::Property)> &callback)
+void BaseDevice::watchProperty(const char *name, const std::function<void(INDI::Property)> &callback, WATCH watch)
 {
     D_PTR(BaseDevice);
-    d->watchPropertyMap[name] = callback;
+    d->watchPropertyMap[name].callback = callback;
+    d->watchPropertyMap[name].watch = watch;
+
+    // call callback function if property already exists
+    INDI::Property property = getProperty(name);
+    if (property.isValid())
+    {
+        callback(property);
+    }
 }
 
 void BaseDevice::registerProperty(const INDI::Property &property)

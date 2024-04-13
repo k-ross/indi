@@ -32,7 +32,7 @@
 #if defined(_MSC_VER)
 #define snprintf _snprintf
 #pragma warning(push)
-///@todo Introduce plattform indipendent safe functions as macros to fix this
+///@todo Introduce platform independent safe functions as macros to fix this
 #pragma warning(disable : 4996)
 #endif
 
@@ -126,8 +126,8 @@ int AbstractBaseClientPrivate::deleteDevice(const char *devName, char *errmsg)
 {
     if (auto device = watchDevice.getDeviceByName(devName))
     {
-        device.detach();
         watchDevice.deleteDevice(device);
+        device.detach();
         return 0;
     }
     snprintf(errmsg, MAXRBUF, "Device %s not found", devName);
@@ -617,7 +617,9 @@ void AbstractBaseClient::newPingReply(std::string uid)
 
 void AbstractBaseClient::newUniversalMessage(std::string message)
 {
-    IDLog("%s\n", message.c_str());
+    INDI_UNUSED(message);
+    // Do not log message to stderr, let child decide what to do with it.
+    //IDLog("%s\n", message.c_str());
 }
 
 }

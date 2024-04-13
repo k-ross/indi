@@ -73,14 +73,19 @@ bool Communication::sendRequest(const json &command, json *response)
     if (response == nullptr)
         return true;
 
-    char read_buf[DRIVER_LEN] = {0};
-    if ( (tty_rc = tty_read_section(m_PortFD, read_buf, DRIVER_STOP_CHAR, DRIVER_TIMEOUT, &nbytes_read)) != TTY_OK)
+    char read_buf[DRIVER_LEN];
+    do
     {
-        char errorMessage[MAXRBUF] = {0};
-        tty_error_msg(tty_rc, errorMessage, MAXRBUF);
-        LOGF_ERROR("Serial write error: %s", errorMessage);
-        return false;
+        memset(read_buf, 0, sizeof(read_buf));
+        if ( (tty_rc = tty_read_section(m_PortFD, read_buf, DRIVER_STOP_CHAR, DRIVER_TIMEOUT, &nbytes_read)) != TTY_OK)
+        {
+            char errorMessage[MAXRBUF] = {0};
+            tty_error_msg(tty_rc, errorMessage, MAXRBUF);
+            LOGF_ERROR("Serial write error: %s", errorMessage);
+            return false;
+        }
     }
+    while (strncmp(read_buf, "ERR:", 4) == 0 && (LOGF_WARN("%s", read_buf), true));
 
     LOGF_DEBUG("<RES> %s", read_buf);
 
@@ -103,7 +108,7 @@ bool Communication::sendRequest(const json &command, json *response)
     return true;
 }
 
-bool Communication::getStringAsDouble(MotorType type, const std::string &parameter, double &value)
+bool Communication::getStringAsDouble(NodeType type, const std::string &parameter, double &value)
 {
     std::string response;
     if (get(type, parameter, response))
@@ -114,54 +119,54 @@ bool Communication::getStringAsDouble(MotorType type, const std::string &paramet
     return false;
 }
 
-template <typename T> bool Communication::get(MotorType type, const std::string &parameter, T &value)
+template <typename T> bool Communication::get(NodeType type, const std::string &parameter, T &value)
 {
-    std::string motor;
+    std::string node;
     switch (type)
     {
         case MOT_1:
-            motor = "MOT1";
+            node = "MOT1";
             break;
         case MOT_2:
-            motor = "MOT2";
+            node = "MOT2";
             break;
         default:
             break;
     }
 
     json jsonRequest = {{parameter, ""}};
-    return genericRequest(motor, "get", jsonRequest, &value);
+    return genericRequest(node, "get", jsonRequest, &value);
 }
 
-bool Communication::set(MotorType type, const json &value)
+bool Communication::set(NodeType type, const json &value)
 {
-    std::string motor;
+    std::string node;
     switch (type)
     {
         case MOT_1:
-            motor = "MOT1";
+            node = "MOT1";
             break;
         case MOT_2:
-            motor = "MOT2";
+            node = "MOT2";
             break;
         default:
             break;
     }
 
     std::string isDone;
-    if (genericRequest(motor, "set", value, &isDone))
+    if (genericRequest(node, "set", value, &isDone))
         return isDone == "done";
     return false;
 }
 
-template <typename T> bool Communication::genericRequest(const std::string &motor, const std::string &type,
+template <typename T> bool Communication::genericRequest(const std::string &node, const std::string &type,
         const json &command, T *response)
 {
     json jsonRequest;
-    if (motor.empty())
+    if (node.empty())
         jsonRequest = {{"req", {{type, command}}}};
     else
-        jsonRequest = {{"req", {{type, {{motor, command}}}}}};
+        jsonRequest = {{"req", {{type, {{node, command}}}}}};
     if (response == nullptr)
         return sendRequest(jsonRequest);
     else
@@ -178,10 +183,30 @@ template <typename T> bool Communication::genericRequest(const std::string &moto
             //                key = oneItem.key();
             try
             {
-                if (motor.empty())
-                    jsonResponse[type][key].get_to(*response);
+                if (node.empty())
+                {
+                    if (jsonResponse[type].contains(key))
+                        jsonResponse[type][key].get_to(*response);
+                    else if (jsonResponse[type].contains("ERROR"))
+                    {
+                        std::string error = jsonResponse[type]["ERROR"];
+                        LOGF_ERROR("Error: %s", error.c_str());
+                        return false;
+                    }
+                }
                 else
-                    jsonResponse[type][motor][key].get_to(*response);
+                {
+                    if (jsonResponse[type][node].contains(key))
+                        jsonResponse[type][node][key].get_to(*response);
+                    else if (jsonResponse[type][node].contains("ERROR"))
+                    {
+                        std::string error = jsonResponse[type][node]["ERROR"];
+                        LOGF_ERROR("Error: %s", error.c_str());
+                        return false;
+                    }
+                }
+
+
             }
             catch (json::exception &e)
             {
@@ -198,22 +223,22 @@ template <typename T> bool Communication::genericRequest(const std::string &moto
     return false;
 }
 
-template <typename T> bool Communication::command(MotorType type, const json &jsonCommand)
+template <typename T> bool Communication::command(NodeType type, const json &jsonCommand)
 {
-    std::string motor;
+    std::string node;
     switch (type)
     {
         case MOT_1:
-            motor = "MOT1";
+            node = "MOT1";
             break;
         case MOT_2:
-            motor = "MOT2";
+            node = "MOT2";
             break;
         default:
             break;
     }
     std::string response;
-    if (genericRequest(motor, "cmd", jsonCommand, &response))
+    if (genericRequest(node, "cmd", jsonCommand, &response))
         return response == "done";
     return false;
 }
@@ -330,7 +355,7 @@ bool Focuser::getMotorTemp(double &value)
 *******************************************************************************************************/
 bool Focuser::getExternalTemp(double &value)
 {
-    return m_Communication->getStringAsDouble(MOT_NONE, "EXT_T", value);
+    return m_Communication->getStringAsDouble(GENERIC_NODE, "EXT_T", value);
 }
 
 /******************************************************************************************************
@@ -338,7 +363,7 @@ bool Focuser::getExternalTemp(double &value)
 *******************************************************************************************************/
 bool Focuser::getSerialNumber(std::string &response)
 {
-    return m_Communication->get(MOT_NONE, "SN", response);
+    return m_Communication->get(GENERIC_NODE, "SN", response);
 }
 
 /******************************************************************************************************
@@ -346,7 +371,7 @@ bool Focuser::getSerialNumber(std::string &response)
 *******************************************************************************************************/
 bool Focuser::getVoltage12v(double &value)
 {
-    return m_Communication->getStringAsDouble(MOT_NONE, "VIN_12V", value);
+    return m_Communication->getStringAsDouble(GENERIC_NODE, "VIN_12V", value);
 }
 
 /******************************************************************************************************
@@ -355,7 +380,7 @@ bool Focuser::getVoltage12v(double &value)
 bool Focuser::getFirmwareVersion(std::string &response)
 {
     json versions;
-    if (m_Communication->get(MOT_NONE, "SWVERS", versions))
+    if (m_Communication->get(GENERIC_NODE, "SWVERS", versions))
     {
         versions["SWAPP"].get_to(response);
         return true;
@@ -402,7 +427,7 @@ bool SestoSenso2::storeAsMinPosition()
 *******************************************************************************************************/
 bool SestoSenso2::goOutToFindMaxPos()
 {
-    return m_Communication->command(MOT_1, {"CAL_FOCUSER", "GoOutToFindMaxPos"});
+    return m_Communication->command(MOT_1, {{"CAL_FOCUSER", "GoOutToFindMaxPos"}});
 }
 
 /******************************************************************************************************
@@ -418,7 +443,7 @@ bool SestoSenso2::initCalibration()
 *******************************************************************************************************/
 bool SestoSenso2::applyMotorPreset(const std::string &name)
 {
-    return m_Communication->command(MOT_NONE, {{"RUNPRESET", name}});
+    return m_Communication->command(GENERIC_NODE, {{"RUNPRESET", name}});
 }
 
 /******************************************************************************************************
@@ -539,7 +564,7 @@ bool Esatto::getBacklash(uint32_t &steps)
 *******************************************************************************************************/
 bool Esatto::getVoltageUSB(double &value)
 {
-    return m_Communication->getStringAsDouble(MOT_NONE, "VIN_USB", value);
+    return m_Communication->getStringAsDouble(GENERIC_NODE, "VIN_USB", value);
 }
 
 /******************************************************************************************************
@@ -555,7 +580,7 @@ Arco::Arco(const std::string &name, int port)
 *******************************************************************************************************/
 bool Arco::setEnabled(bool enabled)
 {
-    return m_Communication->set(MOT_NONE, {{"ARCO", enabled ? 1 : 0}});
+    return m_Communication->set(GENERIC_NODE, {{"ARCO", enabled ? 1 : 0}});
 }
 
 /******************************************************************************************************
@@ -564,7 +589,7 @@ bool Arco::setEnabled(bool enabled)
 bool Arco::isEnabled()
 {
     int enabled = 0;
-    if (m_Communication->get(MOT_NONE, "ARCO", enabled))
+    if (m_Communication->get(GENERIC_NODE, "ARCO", enabled))
         return enabled == 1;
     return false;
 }
@@ -578,33 +603,17 @@ bool Arco::getAbsolutePosition(Units unit, double &value)
     switch (unit)
     {
         case UNIT_DEGREES:
-            command = {{"POSITION", "DEG"}};
+            command = {{"POSITION_DEG", ""}};
             break;
         case UNIT_ARCSECS:
-            command = {{"POSITION", "ARCSEC"}};
+            command = {{"POSITION_ARCSEC", ""}};
             break;
         case UNIT_STEPS:
-            command = {{"POSITION", "STEP"}};
+            command = {{"POSITION_STEP", ""}};
             break;
     }
 
-
-    // For steps, we can value directly
-    if (unit == UNIT_STEPS)
-        return m_Communication->genericRequest("MOT2", "get", command, &value);
-    // For DEG and ARCSEC, a string is returned that we must parse.
-    // e.g. "10.000[DEG]"
-    else
-    {
-        std::string response;
-        if (m_Communication->genericRequest("MOT2", "get", command, &response))
-        {
-            sscanf(response.c_str(), "%lf", &value);
-            return true;
-        }
-    }
-
-    return false;
+    return m_Communication->genericRequest("MOT2", "get", command, &value);
 }
 
 /******************************************************************************************************
@@ -727,7 +736,7 @@ bool Arco::isReversed()
 *******************************************************************************************************/
 bool Arco::getSerialNumber(std::string &response)
 {
-    return m_Communication->get(MOT_NONE, "ARCO_SN", response);
+    return m_Communication->get(GENERIC_NODE, "ARCO_SN", response);
 }
 
 /******************************************************************************************************
@@ -747,6 +756,165 @@ bool Arco::getMotorInfo(json &info)
 {
     json jsonRequest = {{"req", {{"get", {{"MOT2", ""}}}}}};
     return m_Communication->sendRequest(jsonRequest, &info);
+}
+
+/******************************************************************************************************
+ * GIOTTO
+*******************************************************************************************************/
+GIOTTO::GIOTTO(const std::string &name, int port)
+{
+    m_Communication.reset(new Communication(name, port));
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool GIOTTO::setLightEnabled(bool enabled)
+{
+    json jsonRequest = {{"req", {{"set", {{"LIGHT", enabled ? 1 : 0}}}}}};
+    return m_Communication->sendRequest(jsonRequest);
+}
+
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool GIOTTO::isLightEnabled()
+{
+    int value;
+    if (m_Communication->get(GENERIC_NODE, "LIGHT", value))
+    {
+        return value == 1;
+    }
+    return false;
+}
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool GIOTTO::getMaxBrightness(uint16_t &value)
+{
+    return m_Communication->get(GENERIC_NODE, "MAX_BRIGHTNESS", value);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool GIOTTO::setBrightness(uint16_t value)
+{
+    return m_Communication->set(GENERIC_NODE, {{"BRIGHTNESS", value}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool GIOTTO::getBrightness(uint16_t &value)
+{
+    return m_Communication->get(GENERIC_NODE, "BRIGHTNESS", value);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+ALTO::ALTO(const std::string &name, int port)
+{
+    m_Communication.reset(new Communication(name, port));
+}
+
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::getModel(std::string &model)
+{
+    return m_Communication->get(GENERIC_NODE, "MODNAME", model);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::getStatus(json &status)
+{
+    return m_Communication->get(MOT_1, "STATUS", status);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::Park()
+{
+    return setPosition(0);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::UnPark()
+{
+    return setPosition(100);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::setPosition(uint8_t value)
+{
+    return m_Communication->set(MOT_1, {{"POSITION", value}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::getPosition(uint8_t &value)
+{
+    return m_Communication->get(MOT_1, "POSITION", value);
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::stop()
+{
+    return m_Communication->command(MOT_1, {{"MOT_STOP", ""}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::initCalibration()
+{
+    return m_Communication->command(MOT_1, {{"CAL_ALTO", "Init"}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::close(bool fast)
+{
+    return m_Communication->command(MOT_1, {{"CAL_ALTO", fast ? "Close_Fast" : "Close_Slow"}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::open(bool fast)
+{
+    return m_Communication->command(MOT_1, {{"CAL_ALTO", fast ? "Open_Fast" : "Open_Slow"}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::storeClosedPosition()
+{
+    return m_Communication->command(MOT_1, {{"CAL_ALTO", "StoreAsClosedPos"}});
+}
+
+/******************************************************************************************************
+ *
+*******************************************************************************************************/
+bool ALTO::storeOpenPosition()
+{
+    return m_Communication->command(MOT_1, {{"CAL_ALTO", "StoreAsMaxOpenPos"}});
 }
 
 }

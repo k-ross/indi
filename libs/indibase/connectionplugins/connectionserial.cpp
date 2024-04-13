@@ -28,12 +28,13 @@
 #include <thread>
 #include <chrono>
 #include <regex>
+#include <random>
 
 namespace Connection
 {
 extern const char *CONNECTION_TAB;
 
-Serial::Serial(INDI::DefaultDevice *dev) : Interface(dev, CONNECTION_SERIAL)
+Serial::Serial(INDI::DefaultDevice *dev, IPerm permission) : Interface(dev, CONNECTION_SERIAL), m_Permission(permission)
 {
     char configPort[256] = {0};
     // Try to load the port from the config file. If that fails, use default port.
@@ -50,7 +51,7 @@ Serial::Serial(INDI::DefaultDevice *dev) : Interface(dev, CONNECTION_SERIAL)
         IUFillText(&PortT[0], "PORT", "Port", "/dev/ttyUSB0");
 #endif
     }
-    IUFillTextVector(&PortTP, PortT, 1, dev->getDeviceName(), INDI::SP::DEVICE_PORT, "Ports", CONNECTION_TAB, IP_RW, 60,
+    IUFillTextVector(&PortTP, PortT, 1, dev->getDeviceName(), INDI::SP::DEVICE_PORT, "Ports", CONNECTION_TAB, m_Permission, 60,
                      IPS_IDLE);
 
     int autoSearchIndex = 0;
@@ -74,7 +75,7 @@ Serial::Serial(INDI::DefaultDevice *dev) : Interface(dev, CONNECTION_SERIAL)
     IUFillSwitch(&BaudRateS[4], "115200", "", ISS_OFF);
     IUFillSwitch(&BaudRateS[5], "230400", "", ISS_OFF);
     IUFillSwitchVector(&BaudRateSP, BaudRateS, 6, dev->getDeviceName(), INDI::SP::DEVICE_BAUD_RATE, "Baud Rate", CONNECTION_TAB,
-                       IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+                       m_Permission, ISR_1OFMANY, 60, IPS_IDLE);
 
     // Try to load the port from the config file. If that fails, use default port.
     IUGetConfigOnSwitchIndex(dev->getDeviceName(), INDI::SP::DEVICE_BAUD_RATE, &m_ConfigBaudRate);
@@ -211,7 +212,10 @@ bool Serial::Connect()
 
             systemPorts.push_back(m_SystemPorts[i].c_str());
         }
-        std::random_shuffle (systemPorts.begin(), systemPorts.end());
+
+        std::random_device rd;
+        std::minstd_rand g(rd());
+        std::shuffle(systemPorts.begin(), systemPorts.end(), g);
 
         std::vector<std::string> doubleSearch = systemPorts;
 
@@ -274,7 +278,7 @@ bool Serial::processHandshake()
     if (rc)
     {
         LOGF_INFO("%s is online.", getDeviceName());
-        if (std::string(PortT[0].text) != m_ConfigPort || IUFindOnSwitchIndex(&BaudRateSP) != m_ConfigBaudRate)
+        if (m_Permission != IP_RO && (std::string(PortT[0].text) != m_ConfigPort || IUFindOnSwitchIndex(&BaudRateSP) != m_ConfigBaudRate))
         {
             m_Device->saveConfig(true, INDI::SP::DEVICE_PORT);
             m_Device->saveConfig(true, INDI::SP::DEVICE_BAUD_RATE);
@@ -326,11 +330,15 @@ bool Serial::Disconnect()
 
 void Serial::Activated()
 {
-    Refresh(true);
+    if (m_Permission != IP_RO)
+        Refresh(true);
     m_Device->defineProperty(&PortTP);
     m_Device->defineProperty(&BaudRateSP);
-    m_Device->defineProperty(&AutoSearchSP);
-    m_Device->defineProperty(&RefreshSP);
+    if (m_Permission != IP_RO)
+    {
+        m_Device->defineProperty(&AutoSearchSP);
+        m_Device->defineProperty(&RefreshSP);
+    }
 }
 
 void Serial::Deactivated()
@@ -340,15 +348,21 @@ void Serial::Deactivated()
     SystemPortS = nullptr;
     m_Device->deleteProperty(PortTP.name);
     m_Device->deleteProperty(BaudRateSP.name);
-    m_Device->deleteProperty(AutoSearchSP.name);
-    m_Device->deleteProperty(RefreshSP.name);
+    if (m_Permission != IP_RO)
+    {
+        m_Device->deleteProperty(AutoSearchSP.name);
+        m_Device->deleteProperty(RefreshSP.name);
+    }
 }
 
 bool Serial::saveConfigItems(FILE *fp)
 {
-    IUSaveConfigText(fp, &PortTP);
-    IUSaveConfigSwitch(fp, &BaudRateSP);
-    IUSaveConfigSwitch(fp, &AutoSearchSP);
+    if (m_Permission != IP_RO)
+    {
+        IUSaveConfigText(fp, &PortTP);
+        IUSaveConfigSwitch(fp, &BaudRateSP);
+        IUSaveConfigSwitch(fp, &AutoSearchSP);
+    }
 
     return true;
 }
@@ -547,9 +561,9 @@ bool Serial::Refresh(bool silent)
 
     m_Device->defineProperty(&SystemPortSP);
 
-    // If we have one physical port only, set it to the device port if the current port
-    // is the default port.
-    if (pCount == 1 && std::string(PortT[0].text) == m_ConfigPort)
+    // If we have one physical port, set the current device port to this physical port
+    // in case the default config port does not exist.
+    if (pCount == 1 && m_ConfigPort.empty())
         IUSaveText(&PortT[0], m_Ports[0].c_str());
     return true;
 }

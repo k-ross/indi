@@ -212,7 +212,7 @@ bool SER_Recorder::close()
     return true;
 }
 
-bool SER_Recorder::writeFrame(const uint8_t *frame, uint32_t nbytes)
+bool SER_Recorder::writeFrame(const uint8_t *frame, uint32_t nbytes, uint64_t timestamp)
 {
     if (!isRecordingActive)
         return false;
@@ -253,7 +253,10 @@ bool SER_Recorder::writeFrame(const uint8_t *frame, uint32_t nbytes)
     }
 #endif
 
-    frameStamps.push_back(getUTCTimeStamp());
+    if(timestamp)
+        frameStamps.push_back(timestamp * m_sepaseconds_per_microsecond);
+    else
+        frameStamps.push_back(getUTCTimeStamp());
 
     // Not technically pixel format, but let's use this for now.
     if (m_PixelFormat == INDI_JPG)
@@ -381,7 +384,7 @@ void SER_Recorder::dateTo64BitTS(int32_t year, int32_t month, int32_t day, int32
             case 11: // Novenber
                 ts += (30 * m_septaseconds_per_day);
                 break;
-            case 2: // Feburary
+            case 2: // February
                 if (is_leap_year(year))
                 {
                     ts += (29 * m_septaseconds_per_day);

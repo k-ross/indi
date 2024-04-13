@@ -437,6 +437,21 @@ bool Property::isLabelMatch(const std::string &otherLabel) const
     return false;
 }
 
+bool Property::isDeviceNameMatch(const char *otherDeviceName) const
+{
+    return isDeviceNameMatch(std::string(otherDeviceName));
+}
+
+bool Property::isDeviceNameMatch(const std::string &otherDeviceName) const
+{
+    return getDeviceName() == otherDeviceName;
+}
+
+bool Property::isTypeMatch(INDI_PROPERTY_TYPE otherType) const
+{
+    return getType() == otherType;
+}
+
 PropertyViewNumber *Property::getNumber() const
 {
     D_PTR(const Property);
@@ -480,6 +495,13 @@ PropertyViewBlob *Property::getBLOB() const
         return static_cast<PropertyViewBlob*>(d->property);
 
     return nullptr;
+}
+
+bool Property::load()
+{
+    D_PTR(const Property);
+    PROPERTY_CASE( return property->load(); )
+    return false;
 }
 
 void Property::save(FILE *fp) const
