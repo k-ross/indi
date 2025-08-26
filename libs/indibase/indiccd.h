@@ -37,9 +37,6 @@
 #include "dsp/manager.h"
 #include "stream/streammanager.h"
 
-#ifdef HAVE_WEBSOCKET
-#include "indiwsserver.h"
-#endif
 
 #include <fitsio.h>
 
@@ -84,12 +81,7 @@ class XISFWrapper;
  *
  * Developers need to subclass INDI::CCD to implement any driver for CCD cameras within INDI.
  *
- * Data binary transfers are supported using two methods:
- * # INDI BLOBs: This is the and recommended default configuration.
- * # Websockets: This requires INDI to be built with websocket support. There is marginal
- * improvement in throughput with Websockets when compared with INDI base64 BLOB encoding.
- * It requires the client to explicitly support websockets. It is not recommended to use this
- * approach unless for the most demanding and FPS sensitive tasks.
+ * Data binary transfers are supported using INDI BLOBs.
  *
  * INDI::CCD and INDI::StreamManager both upload frames asynchronously in a worker thread.
  * The CCD Buffer data is protected by the ccdBufferLock mutex. When reading the camera data
@@ -129,7 +121,6 @@ class CCD : public DefaultDevice, GuiderInterface
             CCD_HAS_COOLER     = 1 << 6, /*!< Does the CCD have a cooler and temperature control?  */
             CCD_HAS_BAYER      = 1 << 7, /*!< Does the CCD send color data in bayer format?  */
             CCD_HAS_STREAMING  = 1 << 8, /*!< Does the CCD support live video streaming?  */
-            CCD_HAS_WEB_SOCKET = 1 << 9, /*!< Does the CCD support web socket transfers?  */
             CCD_HAS_DSP        = 1 << 10 /*!< Does the CCD support image processing?  */
         } CCDCapability;
 
@@ -173,7 +164,7 @@ class CCD : public DefaultDevice, GuiderInterface
         }
 
         /**
-         * @brief SetCCDCapability Set the CCD capabilities. Al fields must be initialized.
+         * @brief SetCCDCapability Set the CCD capabilities. All fields must be initialized.
          * @param cap pointer to CCDCapability struct.
          */
         void SetCCDCapability(uint32_t cap);
@@ -259,13 +250,6 @@ class CCD : public DefaultDevice, GuiderInterface
             return false;
         }
 
-        /**
-         * @return  True if the CCD supports native Web Socket transfers. False otherwise.
-         */
-        bool HasWebSocket()
-        {
-            return capability & CCD_HAS_WEB_SOCKET;
-        }
 
         /**
          * @return  True if the CCD wants DSP processing. False otherwise.
@@ -639,16 +623,19 @@ class CCD : public DefaultDevice, GuiderInterface
          * ActiveDeviceTP defines snoop devices and the driver listens to this property emitted
          * by the mount driver if specified. It is important to generate a proper FITS header.
          */
-        INumberVectorProperty EqNP;
-        INumber EqN[2];
+        INDI::PropertyNumber EqNP {2};
 
         /**
          * @brief J200EqNP Snoop property to read the equatorial J2000 coordinates of the mount.
          * ActiveDeviceTP defines snoop devices and the driver listens to this property emitted
          * by the mount driver if specified. It is important to generate a proper FITS header.
          */
-        INumberVectorProperty J2000EqNP;
-        INumber J2000EqN[2];
+        INDI::PropertyNumber J2000EqNP {2};
+        enum
+        {
+            Ra,
+            DEC,
+        };
 
         /**
          * @brief ActiveDeviceTP defines 4 devices the camera driver can listen to (snoop) for
@@ -671,8 +658,7 @@ class CCD : public DefaultDevice, GuiderInterface
         /**
          * @brief TemperatureNP Camera Temperature in Celcius.
          */
-        INumberVectorProperty TemperatureNP;
-        INumber TemperatureN[1];
+        INDI::PropertyNumber TemperatureNP {1};
 
         /**
          * @brief Temperature Ramp in C/Min with configurable threshold
@@ -687,16 +673,19 @@ class CCD : public DefaultDevice, GuiderInterface
         /**
          *@brief BayerTP Bayer pattern offset and type
          */
-        ITextVectorProperty BayerTP;
-        IText BayerT[3] {};
-
+        INDI::PropertyText BayerTP {3};
+        enum
+        {
+            CFA_OFFSET_X,
+            CFA_OFFSET_Y,
+            CFA_TYPE
+        };
         /**
          *@brief FileNameTP File name of locally-saved images. By default, images are uploaded to the client
          * but when upload option is set to either @a Both or @a Local, then they are saved on the local disk with
          * this name.
          */
-        ITextVectorProperty FileNameTP;
-        IText FileNameT[1] {};
+        INDI::PropertyText FileNameTP {1};
 
         /// Specifies Camera NATIVE capture format (e.g. Mono, RGB, RAW8..etc).
         INDI::PropertySwitch CaptureFormatSP {0};
@@ -710,11 +699,9 @@ class CCD : public DefaultDevice, GuiderInterface
             FORMAT_XISF      /*!< Save Image as XISF format  */
         };
 
-        ISwitch UploadS[3];
-        ISwitchVectorProperty UploadSP;
+        INDI::PropertySwitch UploadSP {3};
 
-        IText UploadSettingsT[2] {};
-        ITextVectorProperty UploadSettingsTP;
+        INDI::PropertyText UploadSettingsTP {2};
         enum
         {
             UPLOAD_DIR,
@@ -729,39 +716,22 @@ class CCD : public DefaultDevice, GuiderInterface
             APERTURE
         };
 
-        // Websocket Support
-        ISwitch WebSocketS[2];
-        ISwitchVectorProperty WebSocketSP;
-        enum
-        {
-            WEBSOCKET_ENABLED,
-            WEBSOCKET_DISABLED,
-        };
-
-
-        // Websocket Settings
-        INumber WebSocketSettingsN[1];
-        INumberVectorProperty WebSocketSettingsNP;
-        enum
-        {
-            WS_SETTINGS_PORT,
-        };
 
         // WCS
-        ISwitch WorldCoordS[2];
-        ISwitchVectorProperty WorldCoordSP;
-
+        INDI::PropertySwitch WorldCoordSP{2};
+        enum
+        {
+            WCS_ENABLE,
+            WCS_DISABLE
+        };
         // WCS CCD Rotation
-        INumber CCDRotationN[1];
-        INumberVectorProperty CCDRotationNP;
+        INDI::PropertyNumber CCDRotationNP{1};
 
         // Fast Exposure Toggle
-        ISwitch FastExposureToggleS[2];
-        ISwitchVectorProperty FastExposureToggleSP;
+        INDI::PropertySwitch FastExposureToggleSP {2};
 
         // Fast Exposure Frame Count
-        INumber FastExposureCountN[1];
-        INumberVectorProperty FastExposureCountNP;
+        INDI::PropertyNumber FastExposureCountNP {1};
         double m_UploadTime = { 0 };
         std::chrono::system_clock::time_point FastExposureToggleStartup;
 
@@ -788,15 +758,8 @@ class CCD : public DefaultDevice, GuiderInterface
         ///////////////////////////////////////////////////////////////////////////////
         bool uploadFile(CCDChip * targetChip, const void * fitsData, size_t totalBytes, bool sendImage, bool saveImage);
         void getMinMax(double * min, double * max, CCDChip * targetChip);
-        int getFileIndex(const char * dir, const char * prefix, const char * ext);
+        int getFileIndex(const std::string &dir, const std::string &prefix, const std::string &ext);
         bool ExposureCompletePrivate(CCDChip * targetChip);
-
-        // Threading for Websocket
-#ifdef HAVE_WEBSOCKET
-        std::thread wsThread;
-        void wsThreadEntry();
-        INDIWSServer wsServer;
-#endif
 
         /////////////////////////////////////////////////////////////////////////////
         /// Misc.

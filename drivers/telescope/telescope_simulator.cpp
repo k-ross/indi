@@ -35,14 +35,15 @@ static std::unique_ptr<ScopeSim> telescope_sim(new ScopeSim());
 #define GUIDE_WEST  0
 #define GUIDE_EAST  1
 
-ScopeSim::ScopeSim()
+ScopeSim::ScopeSim(): GI(this)
 {
     DBG_SCOPE = static_cast<uint32_t>(INDI::Logger::getInstance().addDebugLevel("Scope Verbose", "SCOPE"));
 
     SetTelescopeCapability(TELESCOPE_CAN_PARK | TELESCOPE_CAN_SYNC | TELESCOPE_CAN_GOTO | TELESCOPE_CAN_ABORT |
-                               TELESCOPE_HAS_TIME | TELESCOPE_HAS_LOCATION | TELESCOPE_HAS_TRACK_MODE | TELESCOPE_CAN_CONTROL_TRACK |
-                               TELESCOPE_HAS_TRACK_RATE,
-                           4);
+                           TELESCOPE_HAS_TIME | TELESCOPE_HAS_LOCATION | TELESCOPE_HAS_TRACK_MODE | TELESCOPE_CAN_CONTROL_TRACK |
+                           TELESCOPE_HAS_TRACK_RATE | TELESCOPE_CAN_HOME_FIND | TELESCOPE_CAN_HOME_SET | TELESCOPE_CAN_HOME_GO,
+                           4
+                          );
 
     /* initialize random seed: */
     srand(static_cast<uint32_t>(time(nullptr)));
@@ -68,7 +69,7 @@ bool ScopeSim::initProperties()
     mountTypeSP[ALTAZ].fill("ALTAZ", "ALTAZ", ISS_OFF);
     mountTypeSP[EQ_FORK].fill("EQ_FORK", "Fork (Eq)", ISS_OFF);
     mountTypeSP[EQ_GEM].fill("EQ_GEM", "GEM", ISS_OFF);
-    mountTypeSP.fill(getDeviceName() ,"MOUNT_TYPE", "Mount Type","Simulation", IP_WO, ISR_1OFMANY, 60, IPS_IDLE);
+    mountTypeSP.fill(getDeviceName(), "MOUNT_TYPE", "Mount Type", "Simulation", IP_WO, ISR_1OFMANY, 60, IPS_IDLE);
 
     simPierSideSP[PS_OFF].fill("PS_OFF", "Off", ISS_OFF);
     simPierSideSP[PS_ON].fill("PS_ON", "On", ISS_ON);
@@ -92,6 +93,11 @@ bool ScopeSim::initProperties()
     mountAxisNP[SECONDARY].fill("SECONDARY", "Secondary (Dec)", "%g", -180, 180, 0.01, 0);
     mountAxisNP.fill(getDeviceName(), "MOUNT_AXES", "Mount Axes",
                      "Simulation", IP_RO, 0, IPS_IDLE);
+
+    decBacklashNP[0].fill("DEC_BACKLASH", "DEC Backlash (ms)", "%.0f", 0, 5000, 0, 0);
+    decBacklashNP.fill(getDeviceName(), "DEC_BACKLASH", "DEC Backlash",
+                       "Simulation", IP_RW, 0, IPS_IDLE);
+
 #endif
 
     /* How fast do we guide compared to sidereal rate */
@@ -100,12 +106,12 @@ bool ScopeSim::initProperties()
     GuideRateNP.fill(getDeviceName(), "GUIDE_RATE", "Guiding Rate", MOTION_TAB, IP_RW, 0,
                      IPS_IDLE);
 
-    IUFillSwitch(&SlewRateS[SLEW_GUIDE], "SLEW_GUIDE", "Guide", ISS_OFF);
-    IUFillSwitch(&SlewRateS[SLEW_CENTERING], "SLEW_CENTERING", "Centering", ISS_OFF);
-    IUFillSwitch(&SlewRateS[SLEW_FIND], "SLEW_FIND", "Find", ISS_OFF);
-    IUFillSwitch(&SlewRateS[SLEW_MAX], "SLEW_MAX", "Max", ISS_ON);
-    IUFillSwitchVector(&SlewRateSP, SlewRateS, 4, getDeviceName(), "TELESCOPE_SLEW_RATE", "Slew Rate", MOTION_TAB,
-                       IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
+    SlewRateSP[SLEW_GUIDE].fill("SLEW_GUIDE", "Guide", ISS_OFF);
+    SlewRateSP[SLEW_CENTERING].fill("SLEW_CENTERING", "Centering", ISS_OFF);
+    SlewRateSP[SLEW_FIND].fill("SLEW_FIND", "Find", ISS_OFF);
+    SlewRateSP[SLEW_MAX].fill("SLEW_MAX", "Max", ISS_ON);
+    SlewRateSP.fill(getDeviceName(), "TELESCOPE_SLEW_RATE", "Slew Rate", MOTION_TAB,
+                    IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
 
     // Add Tracking Modes, the order must match the order of the TelescopeTrackMode enum
     AddTrackMode("TRACK_SIDEREAL", "Sidereal", true);
@@ -113,15 +119,10 @@ bool ScopeSim::initProperties()
     AddTrackMode("TRACK_LUNAR", "Lunar");
     AddTrackMode("TRACK_CUSTOM", "Custom");
 
-    HomeSP[Find].fill("FIND", "Find", ISS_OFF);
-    HomeSP[Set].fill("SET", "Set As Current", ISS_OFF);
-    HomeSP[Go].fill("GO", "Go", ISS_OFF);
-    HomeSP.fill(getDeviceName(), "TELESCOPE_HOME", "Home", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
-
     // RA is a rotating frame, while HA or Alt/Az is not
     SetParkDataType(PARK_HA_DEC);
 
-    initGuiderProperties(getDeviceName(), MOTION_TAB);
+    GI::initProperties(MOTION_TAB);
 
     /* Add debug controls so we may debug driver if necessary */
     addDebugControl();
@@ -148,6 +149,8 @@ void ScopeSim::ISGetProperties(const char *dev)
     defineProperty(mountAxisNP);
     defineProperty(flipHourAngleNP);
     flipHourAngleNP.load();
+    defineProperty(decBacklashNP);
+    decBacklashNP.load();
 #endif
 }
 
@@ -159,11 +162,9 @@ bool ScopeSim::updateProperties()
 
     if (isConnected())
     {
-        defineProperty(&GuideNSNP);
-        defineProperty(&GuideWENP);
         defineProperty(GuideRateNP);
         GuideRateNP.load();
-        defineProperty(HomeSP);
+        //defineProperty(HomeSP);
 
         if (InitPark())
         {
@@ -172,10 +173,10 @@ bool ScopeSim::updateProperties()
             {
                 // at this point there is a valid ParkData.xml available
 
-                alignment.latitude = Angle(LocationN[LOCATION_LATITUDE].value);
-                alignment.longitude = Angle(LocationN[LOCATION_LONGITUDE].value);
-                currentRA = (alignment.lst() - Angle(ParkPositionN[AXIS_RA].value, Angle::ANGLE_UNITS::HOURS)).Hours();
-                currentDEC = ParkPositionN[AXIS_DE].value;
+                alignment.latitude = Angle(LocationNP[LOCATION_LATITUDE].getValue());
+                alignment.longitude = Angle(LocationNP[LOCATION_LONGITUDE].getValue());
+                currentRA = (alignment.lst() - Angle(ParkPositionNP[AXIS_RA].getValue(), Angle::ANGLE_UNITS::HOURS)).Hours();
+                currentDEC = ParkPositionNP[AXIS_DE].getValue();
                 Sync(currentRA, currentDEC);
 
             }
@@ -196,11 +197,11 @@ bool ScopeSim::updateProperties()
     }
     else
     {
-        deleteProperty(GuideNSNP.name);
-        deleteProperty(GuideWENP.name);
         deleteProperty(GuideRateNP);
-        deleteProperty(HomeSP);
+        //deleteProperty(HomeSP);
     }
+
+    GI::updateProperties();
 
     return true;
 }
@@ -241,54 +242,57 @@ bool ScopeSim::ReadScopeStatus()
     bool slewing = axisPrimary.isSlewing || axisSecondary.isSlewing;
     switch (TrackState)
     {
-    case SCOPE_PARKING:
-        if (!slewing)
-        {
-            SetParked(true);
-            EqNP.s = IPS_IDLE;
-            LOG_INFO("Telescope slew is complete. Parked");
-        }
-        break;
-    case SCOPE_SLEWING:
-        if (!slewing)
-        {
-            // It seems to be required that tracking is enabled when a slew finishes but is it correct?
-            // if the mount was not tracking before the slew should it remain not tracking?
-            TrackState = SCOPE_TRACKING;
-            SetTrackEnabled(true);
-            EqNP.s = IPS_IDLE;
-
-            if (HomeSP.getState() == IPS_BUSY)
+        case SCOPE_PARKING:
+            if (!slewing)
             {
-                HomeSP.setState(IPS_OK);
-                HomeSP.apply();
-                LOG_INFO("Home position reached.");
+                SetParked(true);
+                EqNP.setState(IPS_IDLE);
+                LOG_INFO("Telescope slew is complete. Parked");
             }
-            else
-                LOG_INFO("Telescope slew is complete. Tracking...");
+            break;
+        case SCOPE_SLEWING:
+            if (!slewing)
+            {
+                // It seems to be required that tracking is enabled when a slew finishes but is it correct?
+                // if the mount was not tracking before the slew should it remain not tracking?
+                TrackState = SCOPE_TRACKING;
+                SetTrackEnabled(true);
+                EqNP.setState(IPS_IDLE);
 
-            // check the slew accuracy
-            auto dRa = targetRA - currentRA;
-            auto dDec = targetDEC - currentDEC;
-            LOGF_DEBUG("slew accuracy %f, %f", dRa * 15 * 3600, dDec * 3600);
-        }
-        break;
-    default:
-        break;
+                if (HomeSP.getState() == IPS_BUSY)
+                {
+                    HomeSP.reset();
+                    HomeSP.setState(IPS_OK);
+                    HomeSP.apply();
+                    LOG_INFO("Home position reached.");
+                }
+                else
+                    LOG_INFO("Telescope slew is complete. Tracking...");
+
+                // check the slew accuracy
+                auto dRa = targetRA - currentRA;
+                auto dDec = targetDEC - currentDEC;
+                LOGF_DEBUG("slew accuracy %f, %f", dRa * 15 * 3600, dDec * 3600);
+            }
+            break;
+        case SCOPE_PARKED:
+            return true;
+        default:
+            break;
     }
 
     if (guidingEW && !axisPrimary.IsGuiding())
     {
-        GuideWENP.np[0].value = 0;
-        GuideWENP.np[1].value = 0;
+        GuideWENP[0].setValue(0);
+        GuideWENP[1].setValue(0);
         GuideComplete(INDI_EQ_AXIS::AXIS_RA);
         guidingEW = false;
     }
 
     if (guidingNS && !axisSecondary.IsGuiding())
     {
-        GuideNSNP.np[0].value = 0;
-        GuideNSNP.np[1].value = 0;
+        GuideNSNP[0].setValue(0);
+        GuideNSNP[1].setValue(0);
         GuideComplete(INDI_EQ_AXIS::AXIS_DE);
         guidingNS = false;
     }
@@ -298,7 +302,7 @@ bool ScopeSim::ReadScopeStatus()
     double axisDE = axisSecondary.position.Degrees();
     // No need to spam log until we have some actual changes.
     if (std::fabs(mountAxisNP[AXIS_RA].getValue() - axisRA) > 0.0001 ||
-        std::fabs(mountAxisNP[AXIS_DE].getValue() - axisDE) > 0.0001)
+            std::fabs(mountAxisNP[AXIS_DE].getValue() - axisDE) > 0.0001)
     {
         mountAxisNP[AXIS_RA].setValue(axisRA);
         mountAxisNP[AXIS_DE].setValue(axisDE);
@@ -342,7 +346,7 @@ bool ScopeSim::Sync(double ra, double dec)
 
     LOG_INFO("Sync is successful.");
 
-    EqNP.s = IPS_OK;
+    EqNP.setState(IPS_OK);
 
     NewRaDec(currentRA, currentDEC);
 
@@ -375,14 +379,14 @@ void ScopeSim::StartSlew(double ra, double dec, TelescopeStatus status)
     const char * statusStr;
     switch (status)
     {
-    case SCOPE_PARKING:
-        statusStr = "Parking";
-        break;
-    case SCOPE_SLEWING:
-        statusStr = "Slewing";
-        break;
-    default:
-        statusStr = "unknown";
+        case SCOPE_PARKING:
+            statusStr = "Parking";
+            break;
+        case SCOPE_SLEWING:
+            statusStr = "Slewing";
+            break;
+        default:
+            statusStr = "unknown";
     }
     TrackState = status;
 
@@ -397,7 +401,9 @@ bool ScopeSim::UnPark()
 
 bool ScopeSim::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
 {
-    //  first check if it's for our device
+    // Check guider interface
+    if (GI::processNumber(dev, name, values, names, n))
+        return true;
 
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
@@ -409,22 +415,19 @@ bool ScopeSim::ISNewNumber(const char *dev, const char *name, double values[], c
             return true;
         }
 
-        if (strcmp(name, GuideNSNP.name) == 0 || strcmp(name, GuideWENP.name) == 0)
-        {
-            processGuiderProperties(name, values, names, n);
-            return true;
-        }
-
 #ifdef USE_SIM_TAB
         if (mountModelNP.isNameMatch(name))
         {
-            mountModelNP.update(values, names, n);
+            if (mountModelNP.isUpdated(values, names, n))
+            {
+                mountModelNP.update(values, names, n);
+                alignment.setCorrections(mountModelNP[MM_IH].getValue(), mountModelNP[MM_ID].getValue(),
+                                         mountModelNP[MM_CH].getValue(), mountModelNP[MM_NP].getValue(),
+                                         mountModelNP[MM_MA].getValue(), mountModelNP[MM_ME].getValue());
+                saveConfig(mountModelNP);
+            }
             mountModelNP.setState(IPS_OK);
             mountModelNP.apply();
-            alignment.setCorrections(mountModelNP[MM_IH].getValue(), mountModelNP[MM_ID].getValue(),
-                                     mountModelNP[MM_CH].getValue(), mountModelNP[MM_NP].getValue(),
-                                     mountModelNP[MM_MA].getValue(), mountModelNP[MM_ME].getValue());
-            saveConfig(true, mountModelNP.getName());
             return true;
         }
 
@@ -434,6 +437,14 @@ bool ScopeSim::ISNewNumber(const char *dev, const char *name, double values[], c
             flipHourAngleNP.setState(IPS_OK);
             flipHourAngleNP.apply();
             alignment.setFlipHourAngle(flipHourAngleNP[0].getValue());
+            return true;
+        }
+        if (decBacklashNP.isNameMatch(name))
+        {
+            decBacklashNP.update(values, names, n);
+            decBacklashNP.setState(IPS_OK);
+            decBacklashNP.apply();
+            m_DecGuideBacklashMs = decBacklashNP[0].getValue();
             return true;
         }
 #endif
@@ -448,45 +459,6 @@ bool ScopeSim::ISNewSwitch(const char *dev, const char *name, ISState *states, c
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        // Home Position
-        if (HomeSP.isNameMatch(name))
-        {
-            HomeSP.update(states, names, n);
-            auto onSwitch = HomeSP.findOnSwitchIndex();
-            if (onSwitch == Find)
-            {
-                HomeSP.setState(IPS_BUSY);
-                LOG_INFO("Finding home position...");
-                m_Home[AXIS_RA] = alignment.lst().Hours();
-                m_Home[AXIS_DE] = LocationN[LOCATION_LATITUDE].value > 0 ? 90 : -90;
-                Goto(m_Home[AXIS_RA], m_Home[AXIS_DE]);
-            }
-            else if (onSwitch == Set)
-            {
-                HomeSP.setState(IPS_OK);
-                m_Home[AXIS_RA] = (alignment.lst() - Angle(EqN[AXIS_RA].value, Angle::HOURS)).HoursHa();
-                m_Home[AXIS_DE] = EqN[AXIS_DE].value;
-                LOG_INFO("Setting home position to current position.");
-            }
-            else if (onSwitch == Go)
-            {
-                HomeSP.setState(IPS_BUSY);
-                LOG_INFO("Going to home position.");
-                if (m_Home[AXIS_RA] == 0)
-                {
-                    m_Home[AXIS_RA] = 0;
-                    m_Home[AXIS_DE] = LocationN[LOCATION_LATITUDE].value > 0 ? 90 : -90;
-                }
-
-                // Home HA to home RA
-                auto ra = (alignment.lst() - Angle(m_Home[AXIS_RA], Angle::HOURS)).Hours();
-                Goto(ra, m_Home[AXIS_DE]);
-            }
-
-            HomeSP.reset();
-            HomeSP.apply();
-            return true;
-        }
 #ifdef USE_SIM_TAB
         if (mountTypeSP.isNameMatch(name))
         {
@@ -510,13 +482,13 @@ bool ScopeSim::ISNewSwitch(const char *dev, const char *name, ISState *states, c
         }
 #endif \
     // Slew mode
-        if (strcmp(name, SlewRateSP.name) == 0)
+        if (SlewRateSP.isNameMatch(name))
         {
-            if (IUUpdateSwitch(&SlewRateSP, states, names, n) < 0)
+            if (SlewRateSP.update( states, names, n) == false)
                 return false;
 
-            SlewRateSP.s = IPS_OK;
-            IDSetSwitch(&SlewRateSP, nullptr);
+            SlewRateSP.setState(IPS_OK);
+            SlewRateSP.apply();
             return true;
         }
     }
@@ -539,9 +511,12 @@ bool ScopeSim::MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command)
         LOG_ERROR("Please unpark the mount before issuing any motion commands.");
         return false;
     }
-    mcRate = static_cast<int>(IUFindOnSwitchIndex(&SlewRateSP)) + 1;
+    mcRate = static_cast<int>(SlewRateSP.findOnSwitchIndex()) + 1;
+    mcRate = std::max(1, std::min(4, mcRate));
 
     int rate = (dir == INDI_DIR_NS::DIRECTION_NORTH) ? mcRate : -mcRate;
+    if (HasPierSide() & (currentPierSide == PIER_WEST)) // see scopesim_helper.cpp: alignment
+        rate = -rate;
     LOGF_DEBUG("MoveNS dir %s, motion %s, rate %d", dir == DIRECTION_NORTH ? "N" : "S", command == 0 ? "start" : "stop", rate);
 
     axisSecondary.mcRate = command == MOTION_START ? rate : 0;
@@ -557,7 +532,9 @@ bool ScopeSim::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
         return false;
     }
 
-    mcRate = static_cast<int>(IUFindOnSwitchIndex(&SlewRateSP)) + 1;
+    mcRate = static_cast<int>(SlewRateSP.findOnSwitchIndex()) + 1;
+    mcRate = std::max(1, std::min(4, mcRate));
+
     int rate = (dir == INDI_DIR_WE::DIRECTION_EAST) ? -mcRate : mcRate;
     LOGF_DEBUG("MoveWE dir %d, motion %s, rate %d", dir == DIRECTION_EAST ? "E" : "W", command == 0 ? "start" : "stop", rate);
 
@@ -565,9 +542,56 @@ bool ScopeSim::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     return true;
 }
 
+uint32_t ScopeSim::backlashComputation(uint32_t ms)
+{
+    if (m_DecGuideRemainingBacklash <= 0)
+    {
+        m_DecGuideRemainingBacklash = 0;
+    }
+    else if (m_DecGuideRemainingBacklash >= ms)
+    {
+        m_DecGuideRemainingBacklash -= ms;
+        ms = 0;
+    }
+    else
+    {
+        ms -= m_DecGuideRemainingBacklash;
+        m_DecGuideRemainingBacklash = 0;
+    }
+    return ms;
+}
+
+uint32_t ScopeSim::applyDecBacklash(double rate, uint32_t ms)
+{
+    const bool changingDirections = (rate < 0 && m_GuideDecLastNorth) ||
+                                    (rate > 0 && !m_GuideDecLastNorth);
+    m_GuideDecLastNorth = rate >= 0;
+
+    if (!changingDirections)
+    {
+        ms = backlashComputation(ms);
+        return ms;
+    }
+    else
+    {
+        if (m_DecGuideRemainingBacklash <= 0)
+            m_DecGuideRemainingBacklash = m_DecGuideBacklashMs;
+        else if (m_DecGuideRemainingBacklash >= m_DecGuideBacklashMs)
+            m_DecGuideRemainingBacklash = 0;
+        else
+            m_DecGuideRemainingBacklash = m_DecGuideBacklashMs - m_DecGuideRemainingBacklash;
+
+        ms = backlashComputation(ms);
+        return ms;
+    }
+}
+
 IPState ScopeSim::GuideNorth(uint32_t ms)
 {
     double rate = GuideRateNP[DEC_AXIS].getValue();
+    if (HasPierSide() & (currentPierSide == PIER_WEST)) // see scopsim_helper.cpp: alignment
+        rate = -rate;
+    ms = applyDecBacklash(rate, ms);
     axisSecondary.StartGuide(rate, ms);
     guidingNS = true;
     return IPS_BUSY;
@@ -576,6 +600,9 @@ IPState ScopeSim::GuideNorth(uint32_t ms)
 IPState ScopeSim::GuideSouth(uint32_t ms)
 {
     double rate = GuideRateNP[DEC_AXIS].getValue();
+    if (HasPierSide() & (currentPierSide == PIER_WEST)) // see scopsim_helper.cpp: alignment
+        rate = -rate;
+    ms = applyDecBacklash(-rate, ms);
     axisSecondary.StartGuide(-rate, ms);
     guidingNS = true;
     return IPS_BUSY;
@@ -621,21 +648,21 @@ bool ScopeSim::SetTrackMode(uint8_t mode)
 {
     switch (static_cast<TelescopeTrackMode>(mode))
     {
-    case TRACK_SIDEREAL:
-        axisPrimary.TrackRate(Axis::SIDEREAL);
-        axisSecondary.TrackRate(Axis::OFF);
-        return true;
-    case TRACK_SOLAR:
-        axisPrimary.TrackRate(Axis::SOLAR);
-        axisSecondary.TrackRate(Axis::OFF);
-        return true;
-    case TRACK_LUNAR:
-        axisPrimary.TrackRate(Axis::LUNAR);
-        axisSecondary.TrackRate(Axis::OFF);
-        return true;
-    case TRACK_CUSTOM:
-        SetTrackRate(TrackRateN[AXIS_RA].value, TrackRateN[AXIS_DE].value);
-        return true;
+        case TRACK_SIDEREAL:
+            axisPrimary.TrackRate(Axis::SIDEREAL);
+            axisSecondary.TrackRate(Axis::OFF);
+            return true;
+        case TRACK_SOLAR:
+            axisPrimary.TrackRate(Axis::SOLAR);
+            axisSecondary.TrackRate(Axis::OFF);
+            return true;
+        case TRACK_LUNAR:
+            axisPrimary.TrackRate(Axis::LUNAR);
+            axisSecondary.TrackRate(Axis::OFF);
+            return true;
+        case TRACK_CUSTOM:
+            SetTrackRate(TrackRateNP[AXIS_RA].getValue(), TrackRateNP[AXIS_DE].getValue());
+            return true;
     }
     return false;
 }
@@ -664,6 +691,7 @@ bool ScopeSim::saveConfigItems(FILE *fp)
     simPierSideSP.save(fp);
     mountModelNP.save(fp);
     flipHourAngleNP.save(fp);
+    decBacklashNP.save(fp);
 
 #endif
     return true;
@@ -720,6 +748,45 @@ bool ScopeSim::updateMountAndPierSide()
     SetTelescopeCapability(cap, 4);
 
     return true;
+}
+
+
+IPState ScopeSim::ExecuteHomeAction(TelescopeHomeAction action)
+{
+    switch (action)
+    {
+        case HOME_FIND:
+            LOG_INFO("Finding home position...");
+            m_Home[AXIS_RA] = alignment.lst().Hours();
+            m_Home[AXIS_DE] = LocationNP[LOCATION_LATITUDE].getValue() > 0 ? 90 : -90;
+            Goto(m_Home[AXIS_RA], m_Home[AXIS_DE]);
+            return IPS_BUSY;
+
+        case HOME_SET:
+            m_Home[AXIS_RA] = (alignment.lst() - Angle(EqNP[AXIS_RA].getValue(), Angle::HOURS)).HoursHa();
+            m_Home[AXIS_DE] = EqNP[AXIS_DE].getValue();
+            LOG_INFO("Setting home position to current position.");
+            return IPS_OK;
+
+        case HOME_GO:
+        {
+            LOG_INFO("Going to home position.");
+            if (m_Home[AXIS_RA] == 0)
+            {
+                m_Home[AXIS_RA] = 0;
+                m_Home[AXIS_DE] = LocationNP[LOCATION_LATITUDE].getValue() > 0 ? 90 : -90;
+            }
+
+            // Home HA to home RA
+            auto ra = (alignment.lst() - Angle(m_Home[AXIS_RA], Angle::HOURS)).Hours();
+            Goto(ra, m_Home[AXIS_DE]);
+            return IPS_BUSY;
+        }
+
+        default:
+            return IPS_ALERT;
+    }
+    return IPS_ALERT;
 }
 
 /////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /*
-    ZWO AM5 INDI driver
+    ZWO AM5/AM3 INDI driver
 
-    Copyright (C) 2022 Jasem Mutlaq
+    Copyright (C) 2022-2025 Jasem Mutlaq
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -35,7 +35,7 @@
 
 LX200AM5::LX200AM5()
 {
-    setVersion(1, 1);
+    setVersion(1, 3);
 
     setLX200Capability(LX200_HAS_PULSE_GUIDING);
 
@@ -46,8 +46,11 @@ LX200AM5::LX200AM5()
                            TELESCOPE_CAN_CONTROL_TRACK |
                            TELESCOPE_HAS_TIME |
                            TELESCOPE_HAS_LOCATION |
-                           TELESCOPE_HAS_TRACK_MODE,
-                           SLEW_MODES);
+                           TELESCOPE_HAS_TRACK_MODE |
+                           TELESCOPE_CAN_HOME_SET |
+                           TELESCOPE_CAN_HOME_GO,
+                           SLEW_MODES
+                          );
 }
 
 bool LX200AM5::initProperties()
@@ -79,33 +82,76 @@ bool LX200AM5::initProperties()
         SetTelescopeCapability(GetTelescopeCapability() | TELESCOPE_HAS_PIER_SIDE, SLEW_MODES);
 
     // Slew Rates
-    strncpy(SlewRateS[0].label, "0.25x", MAXINDILABEL);
-    strncpy(SlewRateS[1].label, "0.50x", MAXINDILABEL);
-    strncpy(SlewRateS[2].label, "1x", MAXINDILABEL);
-    strncpy(SlewRateS[3].label, "2x", MAXINDILABEL);
-    strncpy(SlewRateS[4].label, "4x", MAXINDILABEL);
-    strncpy(SlewRateS[5].label, "8x", MAXINDILABEL);
-    strncpy(SlewRateS[6].label, "20x", MAXINDILABEL);
-    strncpy(SlewRateS[7].label, "60x", MAXINDILABEL);
-    strncpy(SlewRateS[8].label, "720x", MAXINDILABEL);
-    strncpy(SlewRateS[9].label, "1440x", MAXINDILABEL);
-    IUResetSwitch(&SlewRateSP);
+
+    SlewRateSP[0].setLabel("0.5x");
+    SlewRateSP[1].setLabel("1x");
+    SlewRateSP[2].setLabel("2x");
+    SlewRateSP[3].setLabel("4x");
+    SlewRateSP[4].setLabel("8x");
+    SlewRateSP[5].setLabel("20x");
+    SlewRateSP[6].setLabel("60x");
+    SlewRateSP[7].setLabel("720x");
+    SlewRateSP[8].setLabel("1440x");
+    SlewRateSP.reset();
     // 1440x is the default
-    SlewRateS[9].s = ISS_ON;
+    SlewRateSP[8].setState(ISS_ON);
 
     // Home/Zero position
-    HomeSP[0].fill("GO", "Go", ISS_OFF);
-    HomeSP.fill(getDeviceName(), "TELESCOPE_HOME", "Home", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+    // HomeSP[0].fill("GO", "Go", ISS_OFF);
+    // HomeSP.fill(getDeviceName(), "TELESCOPE_HOME", "Home", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
     // Guide Rate
     GuideRateNP[0].fill("RATE", "Rate", "%.2f", 0.1, 0.9, 0.1, 0.5);
     GuideRateNP.fill(getDeviceName(), "GUIDE_RATE", "Guiding Rate", MOTION_TAB, IP_RW, 60, IPS_IDLE);
+    GuideRateNP.load();
 
     // Buzzer
     BuzzerSP[Off].fill("OFF", "Off", ISS_OFF);
     BuzzerSP[Low].fill("LOW", "Low", ISS_OFF);
     BuzzerSP[High].fill("HIGH", "High", ISS_ON);
     BuzzerSP.fill(getDeviceName(), "BUZZER", "Buzzer", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    BuzzerSP.onUpdate([this]
+    {
+        if (setBuzzer(BuzzerSP.findOnSwitchIndex()))
+        {
+            BuzzerSP.setState(IPState::IPS_OK);
+        }
+        else
+        {
+            BuzzerSP.setState(IPState::IPS_ALERT);
+        }
+        BuzzerSP.apply();
+    });
+
+    // Heavy Duty Mode
+    HeavyDutyModeSP[INDI_ENABLED].fill("INDI_ENABLED", "Enabled", ISS_OFF);
+    HeavyDutyModeSP[INDI_DISABLED].fill("INDI_DISABLED", "Disabled", ISS_OFF);
+    HeavyDutyModeSP.fill(getDeviceName(), "HEAVY_DUTY_MODE", "Heavy Duty Mode", MOTION_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    HeavyDutyModeSP.onUpdate([this]
+    {
+        bool enabled = HeavyDutyModeSP[INDI_ENABLED].getState() == ISS_ON;
+        IPState state = setHeavyDutyMode(enabled) ? IPS_OK : IPS_ALERT;
+        HeavyDutyModeSP.setState(state);
+        HeavyDutyModeSP.apply();
+    });
+
+    // Meridian Flip Enable
+    MeridianFlipSP[INDI_ENABLED].fill("INDI_ENABLED", "Enabled", ISS_ON);
+    MeridianFlipSP[INDI_DISABLED].fill("INDI_DISABLED", "Disabled", ISS_OFF);
+    MeridianFlipSP.fill(getDeviceName(), "MERIDIAN_FLIP", "Meridian Flip", MERIDIAN_FLIP_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    MeridianFlipSP.load();
+
+    // Post Meridian Track
+    PostMeridianTrackSP[TRACK].fill("TRACK", "Track", ISS_ON);
+    PostMeridianTrackSP[STOP].fill("STOP", "Stop", ISS_OFF);
+    PostMeridianTrackSP.fill(getDeviceName(), "POST_MERIDIAN_TRACK", "After Meridian", MERIDIAN_FLIP_TAB, IP_RW, ISR_1OFMANY,
+                             60, IPS_IDLE);
+    PostMeridianTrackSP.load();
+
+    // Meridian Flip Limit
+    MeridianLimitNP[0].fill("LIMIT", "Limit (deg)", "%.f", -15, 15, 1, 0);
+    MeridianLimitNP.fill(getDeviceName(), "MERIDIAN_LIMIT", "Meridian Limit", MERIDIAN_FLIP_TAB, IP_RW, 60, IPS_IDLE);
+    MeridianLimitNP.load();
 
     return true;
 }
@@ -121,16 +167,33 @@ bool LX200AM5::updateProperties()
     {
         setup();
 
-        defineProperty(HomeSP);
+        //defineProperty(HomeSP);
         defineProperty(GuideRateNP);
         defineProperty(BuzzerSP);
+        defineProperty(HeavyDutyModeSP);
 
+        // Only define meridian flip properties for equatorial mount
+        if (MountTypeSP[Equatorial].getState() == ISS_ON)
+        {
+            defineProperty(MeridianFlipSP);
+            defineProperty(PostMeridianTrackSP);
+            defineProperty(MeridianLimitNP);
+        }
     }
     else
     {
-        deleteProperty(HomeSP);
+        //deleteProperty(HomeSP);
         deleteProperty(GuideRateNP);
         deleteProperty(BuzzerSP);
+        deleteProperty(HeavyDutyModeSP);
+
+        // Only delete meridian flip properties if they were defined
+        if (MountTypeSP[Equatorial].getState() == ISS_ON)
+        {
+            deleteProperty(MeridianFlipSP);
+            deleteProperty(PostMeridianTrackSP);
+            deleteProperty(MeridianLimitNP);
+        }
     }
 
     return true;
@@ -179,6 +242,11 @@ void LX200AM5::setup()
     getTrackMode();
     getGuideRate();
     getBuzzer();
+    getHeavyDutyMode();
+
+    // Only get meridian flip settings for equatorial mount
+    if (MountTypeSP[Equatorial].getState() == ISS_ON)
+        getMeridianFlipSettings();
 
 }
 
@@ -189,6 +257,32 @@ bool LX200AM5::ISNewSwitch(const char *dev, const char *name, ISState *states, c
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
+        // Meridian Flip
+        if (MeridianFlipSP.isNameMatch(name))
+        {
+            MeridianFlipSP.update(states, names, n);
+            auto rc = setMeridianFlipSettings(MeridianFlipSP[INDI_ENABLED].getState() == ISS_ON,
+                                              PostMeridianTrackSP[TRACK].getState() == ISS_ON,
+                                              MeridianLimitNP[0].getValue());
+            MeridianFlipSP.setState(rc ? IPS_OK : IPS_ALERT);
+            MeridianFlipSP.apply();
+            saveConfig(MeridianFlipSP);
+            return true;
+        }
+
+        // Post Meridian Track
+        if (PostMeridianTrackSP.isNameMatch(name))
+        {
+            PostMeridianTrackSP.update(states, names, n);
+            auto rc = setMeridianFlipSettings(MeridianFlipSP[INDI_ENABLED].getState() == ISS_ON,
+                                              PostMeridianTrackSP[TRACK].getState() == ISS_ON,
+                                              MeridianLimitNP[0].getValue());
+            PostMeridianTrackSP.setState(rc ? IPS_OK : IPS_ALERT);
+            PostMeridianTrackSP.apply();
+            saveConfig(PostMeridianTrackSP);
+            return true;
+        }
+
         // Mount Type
         if (MountTypeSP.isNameMatch(name))
         {
@@ -207,19 +301,6 @@ bool LX200AM5::ISNewSwitch(const char *dev, const char *name, ISState *states, c
             MountTypeSP.apply();
             return true;
         }
-
-        // Home
-        if (HomeSP.isNameMatch(name))
-        {
-            if (HomeSP.getState() != IPS_BUSY)
-            {
-                HomeSP[0].setState(ISS_ON);
-                HomeSP.setState(goHome() ? IPS_BUSY : IPS_ALERT);
-                LOG_INFO("Homing in progress...");
-            }
-            HomeSP.apply();
-            return true;
-        }
     }
 
     return LX200Generic::ISNewSwitch(dev, name, states, names, n);
@@ -232,11 +313,24 @@ bool LX200AM5::ISNewNumber(const char *dev, const char *name, double values[], c
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
+        if (MeridianLimitNP.isNameMatch(name))
+        {
+            MeridianLimitNP.update(values, names, n);
+            auto rc = setMeridianFlipSettings(MeridianFlipSP[INDI_ENABLED].getState() == ISS_ON,
+                                              PostMeridianTrackSP[TRACK].getState() == ISS_ON,
+                                              MeridianLimitNP[0].getValue());
+            MeridianLimitNP.setState(rc ? IPS_OK : IPS_ALERT);
+            MeridianLimitNP.apply();
+            saveConfig(MeridianLimitNP);
+            return true;
+        }
+
         if (GuideRateNP.isNameMatch(name))
         {
             GuideRateNP.update(values, names, n);
             GuideRateNP.setState(setGuideRate(GuideRateNP[0].getValue()) ? IPS_OK : IPS_ALERT);
             GuideRateNP.apply();
+            saveConfig(GuideRateNP);
             return true;
         }
     }
@@ -279,7 +373,7 @@ bool LX200AM5::getMountType()
 bool LX200AM5::SetSlewRate(int index)
 {
     char command[DRIVER_LEN] = {0};
-    snprintf(command, DRIVER_LEN, ":R%d#", index);
+    snprintf(command, DRIVER_LEN, ":R%d#", index + 1);
     return sendCommand(command);
 }
 
@@ -291,7 +385,7 @@ bool LX200AM5::SetSlewRate(int index)
 bool LX200AM5::setGuideRate(double value)
 {
     char command[DRIVER_LEN] = {0};
-    snprintf(command, DRIVER_LEN, ":Rg%.2f", value);
+    snprintf(command, DRIVER_LEN, ":Rg%.2f#", value);
     return sendCommand(command);
 }
 
@@ -325,13 +419,13 @@ bool LX200AM5::getTrackMode()
     char response[DRIVER_LEN] = {0};
     if (sendCommand(":GT#", response))
     {
-        IUResetSwitch(&TrackModeSP);
+        TrackModeSP.reset();
         auto onIndex = response[0] - 0x30;
-        TrackModeS[onIndex].s = ISS_ON;
+        TrackModeSP[onIndex].setState(ISS_ON);
         return true;
     }
 
-    TrackModeSP.s = IPS_ALERT;
+    TrackModeSP.setState(IPS_ALERT);
     return false;
 
 }
@@ -342,7 +436,7 @@ bool LX200AM5::getTrackMode()
 bool LX200AM5::setBuzzer(int value)
 {
     char command[DRIVER_LEN] = {0};
-    snprintf(command, DRIVER_LEN, ":SBu%d", value);
+    snprintf(command, DRIVER_LEN, ":SBu%d#", value);
     return sendCommand(command);
 }
 
@@ -365,6 +459,96 @@ bool LX200AM5::getBuzzer()
         BuzzerSP.setState(IPS_ALERT);
         return true;
     }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+bool LX200AM5::getHeavyDutyMode()
+{
+    char response[DRIVER_LEN] = {0};
+    if (sendCommand(":GRl#", response))
+    {
+        HeavyDutyModeSP.reset();
+
+        if (strcmp(response, "1440#") == 0)
+        {
+            HeavyDutyModeSP[INDI_DISABLED].setState(ISS_ON);
+        }
+
+        if (strcmp(response, "720#") == 0)
+        {
+            HeavyDutyModeSP[INDI_ENABLED].setState(ISS_ON);
+        }
+
+        HeavyDutyModeSP.setState(IPS_OK);
+        return true;
+    }
+    else
+    {
+        HeavyDutyModeSP.setState(IPS_ALERT);
+        return true;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+bool LX200AM5::setHeavyDutyMode(bool enable)
+{
+    return sendCommand(enable ? ":SRl720#" : ":SRl1440#");
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+bool LX200AM5::setMeridianFlipSettings(bool enabled, bool track, double limit)
+{
+    char command[DRIVER_LEN] = {0};
+    snprintf(command, DRIVER_LEN, ":STa%d%d%c%02d#", enabled ? 1 : 0, track ? 1 : 0,
+             limit >= 0 ? '+' : '-', static_cast<int>(std::abs(limit)));
+    char response[2] = {0};
+    auto rc = sendCommand(command, response, -1, 1);
+    return rc && response[0] == '1';
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+bool LX200AM5::getMeridianFlipSettings()
+{
+    char response[DRIVER_LEN] = {0};
+    if (sendCommand(":GTa#", response))
+    {
+        if (strlen(response) >= 5)
+        {
+            // First digit: meridian flip enabled
+            MeridianFlipSP.reset();
+            MeridianFlipSP[response[0] == '1' ? INDI_ENABLED : INDI_DISABLED].setState(ISS_ON);
+            MeridianFlipSP.setState(IPS_OK);
+
+            // Second digit: track after meridian
+            PostMeridianTrackSP.reset();
+            PostMeridianTrackSP[response[1] == '1' ? TRACK : STOP].setState(ISS_ON);
+            PostMeridianTrackSP.setState(IPS_OK);
+
+            // Last three digits: limit angle
+            char *sign = &response[2];
+            char *limit = &response[3];
+            int limitValue = atoi(limit);
+            if (*sign == '-')
+                limitValue = -limitValue;
+            MeridianLimitNP[0].setValue(limitValue);
+            MeridianLimitNP.setState(IPS_OK);
+
+            return true;
+        }
+    }
+
+    MeridianFlipSP.setState(IPS_ALERT);
+    PostMeridianTrackSP.setState(IPS_ALERT);
+    MeridianLimitNP.setState(IPS_ALERT);
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -414,6 +598,16 @@ bool LX200AM5::isTracking()
 bool LX200AM5::goHome()
 {
     return sendCommand(":hC#");
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+bool LX200AM5::setHome()
+{
+    const char cmd[] = ":SOa#";
+    char status = '0';
+    return sendCommand(cmd, &status, strlen(cmd), sizeof(status)) && status == '1';
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -490,7 +684,7 @@ bool LX200AM5::ReadScopeStatus()
 
     if (HomeSP.getState() == IPS_BUSY && isHome)
     {
-        HomeSP[0].setState(ISS_OFF);
+        HomeSP.reset();
         HomeSP.setState(IPS_OK);
         LOG_INFO("Arrived at home.");
         HomeSP.apply();
@@ -515,7 +709,7 @@ bool LX200AM5::ReadScopeStatus()
     else
     {
         // Tracking changed?
-        auto wasTracking = TrackStateS[INDI_ENABLED].s == ISS_ON;
+        auto wasTracking = TrackStateSP[INDI_ENABLED].getState() == ISS_ON;
         auto nowTracking = isTracking();
         if (wasTracking != nowTracking)
             TrackState = nowTracking ? SCOPE_TRACKING : SCOPE_IDLE;
@@ -523,8 +717,9 @@ bool LX200AM5::ReadScopeStatus()
 
     if (getLX200RA(PortFD, &currentRA) < 0 || getLX200DEC(PortFD, &currentDEC) < 0)
     {
-        EqNP.s = IPS_ALERT;
-        IDSetNumber(&EqNP, "Error reading RA/DEC.");
+        EqNP.setState(IPS_ALERT);
+        LOG_ERROR("Error reading RA/DEC.");
+        EqNP.apply();
         return false;
     }
 
@@ -635,4 +830,29 @@ std::vector<std::string> LX200AM5::split(const std::string &input, const std::st
     first{input.begin(), input.end(), re, -1},
           last;
     return {first, last};
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////
+IPState LX200AM5::ExecuteHomeAction(TelescopeHomeAction action)
+{
+    switch (action)
+    {
+        case HOME_GO:
+            if (goHome())
+                return IPS_BUSY;
+            else
+                return IPS_ALERT;
+
+        case HOME_SET:
+            if (setHome())
+                return IPS_OK;
+            else
+                return IPS_ALERT;
+
+        default:
+            return IPS_ALERT;
+
+    }
 }

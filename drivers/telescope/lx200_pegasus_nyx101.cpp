@@ -40,7 +40,7 @@ const char *STATUS_TAB = "Status";
 
 LX200NYX101::LX200NYX101()
 {
-    setVersion(1, 0);
+    setVersion(2, 2);
 
     setLX200Capability(LX200_HAS_PULSE_GUIDING);
 
@@ -51,8 +51,11 @@ LX200NYX101::LX200NYX101()
                            TELESCOPE_CAN_CONTROL_TRACK |
                            TELESCOPE_HAS_TIME |
                            TELESCOPE_HAS_LOCATION |
-                           TELESCOPE_HAS_TRACK_MODE,
-                           SLEW_MODES);
+                           TELESCOPE_HAS_TRACK_MODE |
+                           TELESCOPE_CAN_HOME_SET |
+                           TELESCOPE_CAN_HOME_GO,
+                           SLEW_MODES
+                          );
 }
 
 bool LX200NYX101::initProperties()
@@ -74,7 +77,7 @@ bool LX200NYX101::initProperties()
         SetTelescopeCapability(GetTelescopeCapability() | TELESCOPE_HAS_PIER_SIDE, SLEW_MODES);
 
     // Overwrite TRACK_CUSTOM, with TRACK_KING
-    IUFillSwitch(&TrackModeS[TRACK_KING], "TRACK_KING", "King", ISS_OFF);
+    TrackModeSP[TRACK_KING].fill("TRACK_KING", "King", ISS_OFF);
 
     // Elevation Limits
     ElevationLimitNP[OVERHEAD].fill("ELEVATION_OVERHEAD", "Overhead", "%g", 60, 90,   1, 90);
@@ -110,12 +113,12 @@ bool LX200NYX101::initProperties()
     GuideRateSP.fill(getDeviceName(), "GUIDE_RATE", "Guide Rate", SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     //Go Home
-    HomeSP[0].fill("GO", "Go", ISS_OFF);
-    HomeSP.fill(getDeviceName(), "TELESCOPE_HOME", "Home go", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+    // HomeSP[0].fill("GO", "Go", ISS_OFF);
+    // HomeSP.fill(getDeviceName(), "TELESCOPE_HOME", "Home go", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
-    //Reset Home
-    ResetHomeSP[0].fill("Home", "Reset", ISS_OFF);
-    ResetHomeSP.fill(getDeviceName(), "HOME_RESET", "Home Reset", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    // //Reset Home
+    // ResetHomeSP[0].fill("Home", "Reset", ISS_OFF);
+    // ResetHomeSP.fill(getDeviceName(), "HOME_RESET", "Home Reset", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     verboseReport = false;
     VerboseReportSP[0].fill("On", "On",  ISS_OFF);
@@ -181,19 +184,19 @@ bool LX200NYX101::initProperties()
     RebootSP.fill(getDeviceName(), "REBOOT", "Reboot", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     // Slew Rates
-    strncpy(SlewRateS[0].label, "2x", MAXINDILABEL);
-    strncpy(SlewRateS[1].label, "8x", MAXINDILABEL);
-    strncpy(SlewRateS[2].label, "16x", MAXINDILABEL);
-    strncpy(SlewRateS[3].label, "64x", MAXINDILABEL);
-    strncpy(SlewRateS[4].label, "128x", MAXINDILABEL);
-    strncpy(SlewRateS[5].label, "200x", MAXINDILABEL);
-    strncpy(SlewRateS[6].label, "300x", MAXINDILABEL);
-    strncpy(SlewRateS[7].label, "600x", MAXINDILABEL);
-    strncpy(SlewRateS[8].label, "900x", MAXINDILABEL);
-    strncpy(SlewRateS[9].label, "1200x", MAXINDILABEL);
-    IUResetSwitch(&SlewRateSP);
+    SlewRateSP[0].setLabel("2x");
+    SlewRateSP[1].setLabel("8x");
+    SlewRateSP[2].setLabel("16x");
+    SlewRateSP[3].setLabel("64x");
+    SlewRateSP[4].setLabel("128x");
+    SlewRateSP[5].setLabel("200x");
+    SlewRateSP[6].setLabel("300x");
+    SlewRateSP[7].setLabel("600x");
+    SlewRateSP[8].setLabel("900x");
+    SlewRateSP[9].setLabel("1200x");
+    SlewRateSP.reset();
 
-    SlewRateS[9].s = ISS_ON;
+    SlewRateSP[9].setState(ISS_ON);
 
 
     return true;
@@ -252,8 +255,8 @@ bool LX200NYX101::updateProperties()
 
         defineProperty(MountTypeSP);
         defineProperty(GuideRateSP);
-        defineProperty(HomeSP);
-        defineProperty(ResetHomeSP);
+        // defineProperty(HomeSP);
+        // defineProperty(ResetHomeSP);
         defineProperty(Report);
         defineProperty(FlipSP);
         defineProperty(MeridianLimitNP);
@@ -285,12 +288,12 @@ bool LX200NYX101::updateProperties()
     {
         deleteProperty(MountTypeSP);
         deleteProperty(GuideRateSP);
-        deleteProperty(HomeSP);
+        //deleteProperty(HomeSP);
         deleteProperty(MeridianLimitNP);
         deleteProperty(FlipSP);
         deleteProperty(ElevationLimitNP);
         deleteProperty(SafetyLimitSP);
-        deleteProperty(ResetHomeSP);
+        //deleteProperty(ResetHomeSP);
         deleteProperty(Report);
 #ifdef DEBUG_NYX
         deleteProperty(DebugCommandTP);
@@ -491,13 +494,13 @@ bool LX200NYX101::ReadScopeStatus()
         RefractSP.setState(IPS_OK);
         RefractSP.apply();
     }
-    TrackModeS[TRACK_SIDEREAL].s = ISS_OFF;
-    TrackModeS[TRACK_LUNAR].s = ISS_OFF;
-    TrackModeS[TRACK_SOLAR].s = ISS_OFF;
-    TrackModeS[TRACK_KING].s = ISS_OFF;
-    TrackModeS[_TrackingMode].s = ISS_ON;
-    TrackModeSP.s   = IPS_OK;
-    IDSetSwitch(&TrackModeSP, nullptr);
+    TrackModeSP[TRACK_SIDEREAL].setState(ISS_OFF);
+    TrackModeSP[TRACK_LUNAR].setState(ISS_OFF);
+    TrackModeSP[TRACK_SOLAR].setState(ISS_OFF);
+    TrackModeSP[TRACK_KING].setState(ISS_OFF);
+    TrackModeSP[_TrackingMode].setState(ISS_ON);
+    TrackModeSP.setState(IPS_OK);
+    TrackModeSP.apply();
 
     switch(_PierSide)
     {
@@ -533,7 +536,7 @@ bool LX200NYX101::ReadScopeStatus()
     }
     else
     {
-        auto wasTracking = TrackStateS[INDI_ENABLED].s == ISS_ON;
+        auto wasTracking = TrackStateSP[INDI_ENABLED].getState() == ISS_ON;
         if (wasTracking != _IsTracking)
             TrackState = _IsTracking ? SCOPE_TRACKING : SCOPE_IDLE;
     }
@@ -541,8 +544,9 @@ bool LX200NYX101::ReadScopeStatus()
 
     if (getLX200RA(PortFD, &currentRA) < 0 || getLX200DEC(PortFD, &currentDEC) < 0)
     {
-        EqNP.s = IPS_ALERT;
-        IDSetNumber(&EqNP, "Error reading Ra - Dec");
+        EqNP.setState(IPS_ALERT);
+        LOG_ERROR("Error reading Ra - Dec");
+        EqNP.apply();
         return false;
     }
 
@@ -656,19 +660,6 @@ bool LX200NYX101::ISNewSwitch(const char *dev, const char *name, ISState *states
             GuideRateSP.apply();
             return true;
         }
-        else if(HomeSP.isNameMatch(name))
-        {
-            HomeSP.update(states, names, n);
-            IPState state = IPS_OK;
-            if (isConnected())
-            {
-                HomeSP[0].setState(ISS_OFF);
-                sendCommand(":hC#");
-            }
-            HomeSP.setState(state);
-            HomeSP.apply();
-            return true;
-        }
         else if(FlipSP.isNameMatch(name))
         {
             FlipSP.update(states, names, n);
@@ -693,19 +684,6 @@ bool LX200NYX101::ISNewSwitch(const char *dev, const char *name, ISState *states
             }
             RebootSP.setState(state);
             RebootSP.apply();
-            return true;
-        }
-        else if(ResetHomeSP.isNameMatch(name))
-        {
-            ResetHomeSP.update(states, names, n);
-            IPState state = IPS_OK;
-            if (isConnected())
-            {
-                ResetHomeSP[0].setState(ISS_OFF);
-                sendCommand(":hF#");
-            }
-            ResetHomeSP.setState(state);
-            ResetHomeSP.apply();
             return true;
         }
         else if(SafetyLimitSP.isNameMatch(name))
@@ -1040,6 +1018,26 @@ void LX200NYX101::hexDump(char * buf, const char * data, int size)
 
     if (size > 0)
         buf[3 * size - 1] = '\0';
+}
+
+// Homing
+IPState LX200NYX101::ExecuteHomeAction(TelescopeHomeAction action)
+{
+    switch (action)
+    {
+        case HOME_GO:
+            sendCommand(":hC#");
+            return IPS_BUSY;
+
+        case HOME_SET:
+            sendCommand(":hF#");
+            return IPS_OK;
+
+        default:
+            return IPS_ALERT;
+    }
+
+    return IPS_ALERT;
 }
 
 std::vector<std::string> LX200NYX101::split(const std::string &input, const std::string &regex)

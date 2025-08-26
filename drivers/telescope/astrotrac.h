@@ -94,7 +94,7 @@ class AstroTrac :
         /// Utility
         ///////////////////////////////////////////////////////////////////////////////////////////////
         bool getVersion();
-        void getRADEFromEncoders(double haEncoder, double deEncoder, double &ra, double &de);
+        void getRADEFromEncoders(double haEncoder, double deEncoder, double &ra, double &de, TelescopePierSide &pierSide);
         void getEncodersFromRADE(double ra, double de, double &raEncoder, double &deEncoder);
         double calculateSlewTime(double distance);
         bool getTelescopeFromSkyCoordinates(double ra, double de, INDI::IEquatorialCoordinates &telescopeCoordinates);
@@ -109,6 +109,7 @@ class AstroTrac :
         /// Velocity
         ///////////////////////////////////////////////////////////////////////////////////////////////
         bool getVelocity(INDI_EQ_AXIS axis);
+        bool getVelocity(INDI_EQ_AXIS axis, double &value);
 
         /**
          * @brief setVelocity set motor velocity
@@ -193,6 +194,7 @@ class AstroTrac :
 
         /// Mount internal coordinates
         INDI::IEquatorialCoordinates m_MountInternalCoordinates;
+
         ///////////////////////////////////////////////////////////////////////////////////////////////
         /// Static Constants
         ///////////////////////////////////////////////////////////////////////////////////////////////

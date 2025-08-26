@@ -48,6 +48,7 @@ class PropertySwitch: public INDI::PropertyBasic<ISwitch>
 
     public:
         bool update(const ISState states[], const char * const names[], int n);
+        bool isUpdated(const ISState states[], const char * const names[], int n) const;
         bool hasUpdateCallback() const;
 
         void fill(
@@ -58,7 +59,9 @@ class PropertySwitch: public INDI::PropertyBasic<ISwitch>
     public:
         void reset();
         int findOnSwitchIndex() const;
+        std::string findOnSwitchName() const;
         INDI::WidgetViewSwitch *findOnSwitch() const;
+        bool isSwitchOn(const std::string &name) const;
 
     public:
         void setRule(ISRule rule);

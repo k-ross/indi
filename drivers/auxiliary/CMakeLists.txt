@@ -1,6 +1,22 @@
-IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND INDI_INSTALL_UDEV_RULES)
     INSTALL(FILES 99-indi_auxiliary.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
 ENDIF()
+# ########## Terrans PowerBoxGo V2 ###############
+SET(terranspowerboxgov2_SRC
+    Terrans_PowerBoxGo_V2.cpp)
+
+add_executable(indi_terrans_powerboxgo_v2 ${terranspowerboxgov2_SRC})
+target_link_libraries(indi_terrans_powerboxgo_v2 indidriver)
+install(TARGETS indi_terrans_powerboxgo_v2 RUNTIME DESTINATION bin)
+
+# ########## Terrans PowerBoxPro V2 ###############
+SET(terranspowerboxprov2_SRC
+    Terrans_PowerBoxPro_V2.cpp)
+
+add_executable(indi_terrans_powerboxpro_v2 ${terranspowerboxprov2_SRC})
+target_link_libraries(indi_terrans_powerboxpro_v2 indidriver)
+install(TARGETS indi_terrans_powerboxpro_v2 RUNTIME DESTINATION bin)
+
 # ########## WandererCover V4-EC###############
 SET(indi_wanderercover_v4_ec_SRC
     wanderer_cover_v4_ec.cpp)
@@ -8,6 +24,30 @@ SET(indi_wanderercover_v4_ec_SRC
 add_executable(indi_wanderercover_v4_ec ${indi_wanderercover_v4_ec_SRC})
 target_link_libraries(indi_wanderercover_v4_ec indidriver)
 install(TARGETS indi_wanderercover_v4_ec RUNTIME DESTINATION bin)
+
+# ########## WandererCover V4 Pro-EC###############
+SET(indi_wanderercover_v4_pro_ec_SRC
+    wanderer_cover_v4_pro_ec.cpp)
+
+add_executable(indi_wanderercover_v4_pro_ec ${indi_wanderercover_v4_pro_ec_SRC})
+target_link_libraries(indi_wanderercover_v4_pro_ec indidriver)
+install(TARGETS indi_wanderercover_v4_pro_ec RUNTIME DESTINATION bin)
+
+# ########## Wanderer Eclipse###############
+SET(indi_wanderer_eclipse_SRC
+    wanderer_eclipse.cpp)
+
+add_executable(indi_wanderer_eclipse ${indi_wanderer_eclipse_SRC})
+target_link_libraries(indi_wanderer_eclipse indidriver)
+install(TARGETS indi_wanderer_eclipse RUNTIME DESTINATION bin)
+
+# ########## Astrolink-4###############
+SET(indi_astrolink4_SRC
+    indi_astrolink4.cpp)
+
+add_executable(indi_astrolink4 ${indi_wanderercover_v4_ec_SRC})
+target_link_libraries(indi_astrolink4 indidriver)
+install(TARGETS indi_astrolink4 RUNTIME DESTINATION bin)
 
 # ########## Wanderer Box Plus V3 ###############
 SET(indi_wandererbox_plus_v3_SRC
@@ -24,6 +64,14 @@ SET(indi_wandererbox_pro_v3_SRC
 add_executable(indi_wandererbox_pro_v3 ${indi_wandererbox_pro_v3_SRC})
 target_link_libraries(indi_wandererbox_pro_v3 indidriver)
 install(TARGETS indi_wandererbox_pro_v3 RUNTIME DESTINATION bin)
+
+# ########## Wanderer Dew Terminator ###############
+SET(indi_wanderer_dew_terminator_SRC
+    wanderer_dew_terminator.cpp)
+
+add_executable(indi_wanderer_dew_terminator ${indi_wanderer_dew_terminator_SRC})
+target_link_libraries(indi_wanderer_dew_terminator indidriver)
+install(TARGETS indi_wanderer_dew_terminator RUNTIME DESTINATION bin)
 
 # ########## Wanderer Cover V3 ###############
 SET(wandererCover_SRC
@@ -83,6 +131,14 @@ SET(lightpanelsimulator_SRC
 add_executable(indi_simulator_lightpanel ${lightpanelsimulator_SRC})
 target_link_libraries(indi_simulator_lightpanel indidriver)
 install(TARGETS indi_simulator_lightpanel RUNTIME DESTINATION bin)
+
+# ########## Dust Cover Simulator ###############
+SET(dustcoversimulator_SRC
+    dust_cover_simulator.cpp)
+
+add_executable(indi_simulator_dustcover ${dustcoversimulator_SRC})
+target_link_libraries(indi_simulator_dustcover indidriver)
+install(TARGETS indi_simulator_dustcover RUNTIME DESTINATION bin)
 
 # ########## Pegasus Ultimate Power Box Driver ###############
 SET(pegasus_upb_SRC
@@ -156,6 +212,16 @@ SET(lpm_SRC
 add_executable(indi_astromech_lpm ${lpm_SRC})
 target_link_libraries(indi_astromech_lpm indidriver)
 install(TARGETS indi_astromech_lpm RUNTIME DESTINATION bin)
+
+
+# ########## Astrolink Mini v2 #############
+SET(astrolinkminiv2_SRC
+    indi_astrolink4mini2.cpp)
+
+add_executable(indi_astrolink4mini2 ${astrolinkminiv2_SRC})
+target_link_libraries(indi_astrolink4mini2 indidriver)
+install(TARGETS indi_astrolink4mini2 RUNTIME DESTINATION bin)
+
 
 # ########## Sky Quality Meter ###############
 SET(sqm_SRC
@@ -280,13 +346,13 @@ add_executable(indi_mydcp4esp32 ${mydcp4esp32_SRC})
 target_link_libraries(indi_mydcp4esp32 indidriver)
 install(TARGETS indi_mydcp4esp32 RUNTIME DESTINATION bin)
 
-# ########## Deep Sky Dad FP1 ###############
-SET(deepskydad_fp1_SRC
-    deepskydad_fp1.cpp)
+# ########## Deep Sky Dad FP ###############
+SET(deepskydad_fp_SRC
+    deepskydad_fp.cpp)
 
-add_executable(indi_deepskydad_fp1 ${deepskydad_fp1_SRC})
-target_link_libraries(indi_deepskydad_fp1 indidriver)
-install(TARGETS indi_deepskydad_fp1 RUNTIME DESTINATION bin)
+add_executable(indi_deepskydad_fp ${deepskydad_fp_SRC})
+target_link_libraries(indi_deepskydad_fp indidriver)
+install(TARGETS indi_deepskydad_fp RUNTIME DESTINATION bin)
 
 # ########## GIOTTO ###############
 SET(giotto_SRC
@@ -315,3 +381,20 @@ SET(dragonlight_SRC
 add_executable(indi_dragon_light ${dragonlight_SRC})
 target_link_libraries(indi_dragon_light indidriver ${HTTPLIB_LIBRARY})
 install(TARGETS indi_dragon_light RUNTIME DESTINATION bin)
+
+# ########## Gemini Flatpanel ###############
+SET(gemini_flatpanel_SRC
+    gemini_flatpanel.cpp
+    gemini_flatpanel_adapters.cpp)
+
+add_executable(indi_gemini_flatpanel ${gemini_flatpanel_SRC})
+target_link_libraries(indi_gemini_flatpanel indidriver)
+install(TARGETS indi_gemini_flatpanel RUNTIME DESTINATION bin)
+
+# ########## UPS ###############
+SET(ups_SRC
+    ups.cpp)
+
+add_executable(indi_ups_safety ${ups_SRC})
+target_link_libraries(indi_ups_safety indidriver)
+install(TARGETS indi_ups_safety RUNTIME DESTINATION bin)

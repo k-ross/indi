@@ -48,9 +48,9 @@ std::unique_ptr<Pyxis> pyxis(new Pyxis());
 
 Pyxis::Pyxis()
 {
+    setVersion(1, 1);
     // We do not have absolute ticks
     RI::SetCapability(ROTATOR_CAN_HOME | ROTATOR_CAN_REVERSE);
-
     setRotatorConnection(CONNECTION_SERIAL);
 }
 
@@ -61,19 +61,19 @@ bool Pyxis::initProperties()
     // Rotation Rate
     RotationRateNP[0].fill("RATE", "Rate", "%.f", 0, 99, 10, 8);
     RotationRateNP.fill(getDeviceName(), "ROTATION_RATE", "Rotation", SETTINGS_TAB, IP_RW, 0,
-                       IPS_IDLE);
+                        IPS_IDLE);
 
     // Stepping
     SteppingSP[FULL_STEP].fill("FULL_STEP", "Full", ISS_OFF);
     SteppingSP[HALF_STEP].fill("HALF_STEP", "Half", ISS_OFF);
     SteppingSP.fill( getDeviceName(), "STEPPING_RATE", "Stepping", SETTINGS_TAB, IP_RW,
-                       ISR_ATMOST1, 0, IPS_IDLE);
+                     ISR_ATMOST1, 0, IPS_IDLE);
 
     // Power
     PowerSP[POWER_SLEEP].fill("POWER_SLEEP", "Sleep", ISS_OFF);
     PowerSP[POWER_WAKEUP].fill("POWER_WAKEUP", "Wake Up", ISS_OFF);
     PowerSP.fill(getDeviceName(), "POWER_STATE", "Power", SETTINGS_TAB, IP_RW, ISR_ATMOST1, 0,
-                       IPS_IDLE);
+                 IPS_IDLE);
 
     // Firmware version
     FirmwareTP[0].fill("FIRMWARE_VERSION", "Version", "Unknown");
@@ -136,16 +136,16 @@ void Pyxis::queryParams()
     ////////////////////////////////////////////
     int dir = getReverseStatus();
 
-    IUResetSwitch(&ReverseRotatorSP);
-    ReverseRotatorSP.s = IPS_OK;
+    ReverseRotatorSP.reset();
+    ReverseRotatorSP.setState(IPS_OK);
     if (dir == 0)
-        ReverseRotatorS[INDI_DISABLED].s = ISS_ON;
+        ReverseRotatorSP[INDI_DISABLED].setState(ISS_ON);
     else if (dir == 1)
-        ReverseRotatorS[INDI_ENABLED].s = ISS_ON;
+        ReverseRotatorSP[INDI_ENABLED].setState(ISS_ON);
     else
-        ReverseRotatorSP.s = IPS_ALERT;
+        ReverseRotatorSP.setState(IPS_ALERT);
 
-    IDSetSwitch(&ReverseRotatorSP, nullptr);
+    ReverseRotatorSP.apply();
 
     // Firmware version parameter
     std::string sversion = getVersion() ;
@@ -465,7 +465,7 @@ IPState Pyxis::MoveRotator(double angle)
     int nbytes_written = 0, rc = -1;
     char errstr[MAXRBUF];
 
-    uint16_t current = static_cast<uint16_t>(GotoRotatorN[0].value) ;
+    uint16_t current = static_cast<uint16_t>(GotoRotatorNP[0].getValue()) ;
 
     targetPA = static_cast<uint16_t>(round(angle));
 
@@ -530,13 +530,17 @@ void Pyxis::TimerHit()
         return;
     }
 
-    if (HomeRotatorSP.s == IPS_BUSY)
+    // Record last state
+    auto currentState = GotoRotatorNP.getState();
+
+    if (HomeRotatorSP.getState() == IPS_BUSY)
     {
         if (isMotionComplete())
         {
-            HomeRotatorSP.s = IPS_OK;
-            HomeRotatorS[0].s = ISS_OFF;
-            IDSetSwitch(&HomeRotatorSP, nullptr);
+            currentState = IPS_OK;
+            HomeRotatorSP.setState(IPS_OK);
+            HomeRotatorSP[0].setState(ISS_OFF);
+            HomeRotatorSP.apply();
             LOG_INFO("Homing is complete.");
         }
         else
@@ -546,22 +550,29 @@ void Pyxis::TimerHit()
             return;
         }
     }
-    else if (GotoRotatorNP.s == IPS_BUSY)
+    else if (GotoRotatorNP.getState() == IPS_BUSY)
     {
         if (!isMotionComplete())
         {
-            LOGF_DEBUG("Motion in %s", "progress") ;
+            LOG_DEBUG("Motion in progress.") ;
             SetTimer(POLL_100MS) ;
-            return ;
+            return;
         }
-        GotoRotatorNP.s = IPS_OK;
+
+        currentState = IPS_OK;
+        LOG_INFO("Motion complete.") ;
     }
 
-    uint16_t PA = 0;
-    if (getPA(PA) && (PA != static_cast<uint16_t>(GotoRotatorN[0].value)))
+    // Update PA
+    uint16_t PA = GotoRotatorNP[0].getValue();
+    getPA(PA);
+
+    // If either PA or state changed, update the property.
+    if ( (PA != static_cast<uint16_t>(GotoRotatorNP[0].getValue())) || currentState != GotoRotatorNP.getState())
     {
-        GotoRotatorN[0].value = PA;
-        IDSetNumber(&GotoRotatorNP, nullptr);
+        GotoRotatorNP[0].setValue(PA);
+        GotoRotatorNP.setState(currentState);
+        GotoRotatorNP.apply();
     }
 
     SetTimer(getCurrentPollingPeriod());
@@ -585,14 +596,14 @@ bool Pyxis::isMotionComplete()
         {
             LOGF_DEBUG("RES <%s>", res);
 
-            int current = static_cast<uint16_t>(GotoRotatorN[0].value) ;
+            int current = static_cast<uint16_t>(GotoRotatorNP[0].getValue()) ;
 
             current = current + direction ;
             if (current < 0) current = 359 ;
             if (current > 360) current = 1 ;
 
-            GotoRotatorN[0].value = current ;
-            IDSetNumber(&GotoRotatorNP, nullptr);
+            GotoRotatorNP[0].setValue(current );
+            GotoRotatorNP.apply();
 
             LOGF_DEBUG("ANGLE = %d", current) ;
             LOGF_DEBUG("TTY_OVERFLOW, nbytes_read = %d", nbytes_read) ;
@@ -602,10 +613,10 @@ bool Pyxis::isMotionComplete()
         tty_error_msg(rc, errstr, MAXRBUF);
         LOGF_ERROR("%s error: %s.", __FUNCTION__, errstr);
 
-        if (HomeRotatorSP.s == IPS_BUSY)
+        if (HomeRotatorSP.getState() == IPS_BUSY)
         {
-            HomeRotatorS[0].s = ISS_OFF;
-            HomeRotatorSP.s = IPS_ALERT;
+            HomeRotatorSP[0].setState(ISS_OFF);
+            HomeRotatorSP.setState(IPS_ALERT);
             LOG_ERROR("Homing failed. Check possible jam.");
             tcflush(PortFD, TCIOFLUSH);
         }
@@ -614,7 +625,6 @@ bool Pyxis::isMotionComplete()
     }
 
     LOGF_DEBUG("RES <%s>", res);
-
     return true;
 }
 
@@ -643,8 +653,8 @@ bool Pyxis::isMotionComplete()
     // Error
     else if (HomeRotatorSP.s == IPS_BUSY)
     {
-        HomeRotatorS[0].s = ISS_OFF;
-        HomeRotatorSP.s = IPS_ALERT;
+        HomeRotatorSP[0].setState(ISS_OFF);
+        HomeRotatorSP.setState(IPS_ALERT);
         LOG_ERROR("Homing failed. Check possible jam.");
         tcflush(PortFD, TCIOFLUSH);
     }

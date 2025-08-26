@@ -24,20 +24,13 @@ list(APPEND ${PROJECT_NAME}_LIBS
     ${JPEG_LIBRARY}
     ${FFTW3_LIBRARIES}
     ${M_LIB}
-    $<$<PLATFORM_ID:CYGWIN>:${ICONV_LIBRARIES}>
+    ${CURL}
 )
 
-# Add Iconv
-if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-    # FreeBSD needs to find the correct GNU iconv library.
+# Add Iconv - FreeBSD/OpenBSD need to find the correct GNU iconv library.
+if(CYGWIN OR UNIX OR (CMAKE_SYSTEM_NAME MATCHES "FreeBSD|OpenBSD"))
     find_package(Iconv REQUIRED)
-    list(APPEND ${PROJECT_NAME}_LIBS ${ICONV_LIBRARIES})
-endif()
-
-# Add WebSocket
-if(HAVE_WEBSOCKET)
-    list(APPEND ${PROJECT_NAME}_LIBS ${Boost_LIBRARIES})
-    list(APPEND ${PROJECT_NAME}_HEADERS indiwsserver.h)
+    list(APPEND ${PROJECT_NAME}_LIBS ${Iconv_LIBRARIES})
 endif()
 
 # Add LibXISF
@@ -106,7 +99,7 @@ if(UNIX)
         COMPONENT Devel
     )
 
-    if(${CMAKE_SYSTEM_NAME} MATCHES "Linux|FreeBSD")
+    if(${CMAKE_SYSTEM_NAME} MATCHES "Linux|FreeBSD|OpenBSD")
         list(APPEND ${PROJECT_NAME}_SOURCES
             webcam/v4l2_colorspace.c
             webcam/v4l2_base.cpp
@@ -153,6 +146,8 @@ list(APPEND ${PROJECT_NAME}_SOURCES
     indiguiderinterface.cpp
     indifilterinterface.cpp
     indirotatorinterface.cpp
+    indiinputinterface.cpp
+    indioutputinterface.cpp
     indidome.cpp
     indigps.cpp
     indiweather.cpp
@@ -195,6 +190,8 @@ list(APPEND ${PROJECT_NAME}_HEADERS
     indiguiderinterface.h
     indifilterinterface.h
     indirotatorinterface.h
+    indiinputinterface.h
+    indioutputinterface.h
     timer/inditimer.h
     timer/indielapsedtimer.h
     thread/indisinglethreadpool.h

@@ -36,7 +36,11 @@ const std::map<std::string, std::string> Driver::models =
 {
     {"0010", "SkyHunter EQ"},
     {"0011", "SkyHunter AA"},
+    {"0012", "HAE16 EQ"},
+    {"0013", "HAE16 AA"},
+    {"0014", "HAE18 EQ"},
     {"0015", "HEM15"},
+    {"0022", "HAE18 AA"},
     {"0025", "HEM27"},
     {"0026", "CEM26"},
     {"0027", "CEM26-EC"},
@@ -48,6 +52,10 @@ const std::map<std::string, std::string> Driver::models =
     {"0033", "HAE29 AA"},
     {"0034", "HAE29-EC AA"},
     {"0035", "HAZ31"},
+    {"0036", "HAE29C EQ"},
+    {"0037", "HAE29C-EC EQ"},
+    {"0038", "HAE29C AA"},
+    {"0039", "HAE29C-EC EQ"},
     {"0040", "CEM40"},
     {"0041", "CEM40-EC"},
     {"0043", "GEM45"},
@@ -59,6 +67,10 @@ const std::map<std::string, std::string> Driver::models =
     {"0050", "HAE43 AA"},
     {"0051", "HAE43-EC AA"},
     {"0052", "HAZ46"},
+    {"0053", "HAE43C EQ"},
+    {"0054", "HAE43C-EC EQ"},
+    {"0055", "HAE43C AA"},
+    {"0056", "HAE43C-EC AA"},
     {"0060", "CEM60"},
     {"0061", "CEM60-EC"},
     {"0062", "HAE69 EQ"},
@@ -72,6 +84,7 @@ const std::map<std::string, std::string> Driver::models =
     {"0070", "CEM70"},
     {"0071", "CEM70-EC"},
     {"0072", "CEM70-EC2"},
+    {"0073", "HAZ71"},
     {"0120", "CEM120"},
     {"0121", "CEM120-EC"},
     {"0122", "CEM120-EC2"},
@@ -428,7 +441,8 @@ bool Driver::setCurrentHome()
 /* v3.0 Added in control for PEC , Train and Data Integrity */
 bool Driver::setPECEnabled(bool enabled)
 {
-    return sendCommandOk(enabled ? ":SPP1#" : ":SPP0#");
+    // JM 2024.10.11: Changed to direct command without waiting for response.
+    return sendCommand(enabled ? ":SPP1#" : ":SPP0#");
 }
 
 bool Driver::setPETEnabled(bool enabled)

@@ -54,8 +54,25 @@ add_executable(indi_falcon_rotator ${falcon_SRC})
 target_link_libraries(indi_falcon_rotator indidriver)
 install(TARGETS indi_falcon_rotator RUNTIME DESTINATION bin)
 
+# ############### Camelot Rotator ################
+SET(camelot_SRC
+    camelot.cpp)
+
+add_executable(indi_camelot_rotator ${camelot_SRC})
+target_link_libraries(indi_camelot_rotator indidriver)
+install(TARGETS indi_camelot_rotator RUNTIME DESTINATION bin)
+
+# ############### Falcon V2 Rotator ################
+SET(falconv2_SRC
+    pegasus_falconv2.cpp)
+
+add_executable(indi_falconv2_rotator ${falconv2_SRC})
+target_link_libraries(indi_falconv2_rotator indidriver)
+install(TARGETS indi_falconv2_rotator RUNTIME DESTINATION bin)
+
 # ############### Wanderer Rotator Lite ################
 SET(WandererRotatorLite_SRC
+    wanderer_rotator_base.cpp
     wanderer_rotator_lite.cpp)
 
 add_executable(indi_wanderer_lite_rotator ${WandererRotatorLite_SRC})
@@ -64,6 +81,7 @@ install(TARGETS indi_wanderer_lite_rotator RUNTIME DESTINATION bin)
 
 # ############### Wanderer Rotator Mini ################
 SET(WandererRotatorMini_SRC
+    wanderer_rotator_base.cpp
     wanderer_rotator_mini.cpp)
 
 add_executable(indi_wanderer_rotator_mini ${WandererRotatorMini_SRC})
@@ -72,6 +90,7 @@ install(TARGETS indi_wanderer_rotator_mini RUNTIME DESTINATION bin)
 
 # ############### Wanderer Rotator Lite V2 ################
 SET(WandererRotatorLiteV2_SRC
+    wanderer_rotator_base.cpp
     wanderer_rotator_lite_v2.cpp)
 
 add_executable(indi_wanderer_rotator_lite_v2 ${WandererRotatorLiteV2_SRC})

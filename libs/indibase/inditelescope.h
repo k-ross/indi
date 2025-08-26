@@ -60,6 +60,13 @@
  * + TrackState: Engages or Disengages tracking. When engaging tracking, the child class should take the necessary steps to set the appropriate TrackMode and TrackRate
  *               properties before or after engaging tracking as governed by the mount protocol.
  *
+ * Home position is the default starting position of the mount where both axis indexes are in the zero or home position. This can be different from the parking
+ * position which can be set to avoid obstacles (e.g. roof) while in the parked state. For many mounts, the parking and home positions are identical. If homing is supported,
+ * the following operations may be supported:
+ * 1. Find: Search for the home indexes.
+ * 2. Set: Use current position as the home position
+ * 3. Go: Go to the stored home position.
+ *
  * Ideally, the child class should avoid changing property states directly within a function call from the base class as such state changes take place in the base class
  * after checking the return values of such functions.
  * \author Jasem Mutlaq, Gerry Rozema
@@ -127,6 +134,13 @@ class Telescope : public DefaultDevice
             PIER_EAST    = 1
         };
 
+        enum TelescopeHomeAction
+        {
+            HOME_FIND,              /*!< Command mount to search for home position.  */
+            HOME_SET,               /*!< Command mount to accept current position as the home position. */
+            HOME_GO,                /*!< Command mount to slew to home position. */
+        };
+
         enum TelescopePECState
         {
             PEC_UNKNOWN = -1,
@@ -172,6 +186,9 @@ class Telescope : public DefaultDevice
             TELESCOPE_HAS_PIER_SIDE_SIMULATION    = 1 << 11, /** Does the telescope simulate the pier side property? */
             TELESCOPE_CAN_TRACK_SATELLITE         = 1 << 12, /** Can the telescope track satellites? */
             TELESCOPE_CAN_FLIP                    = 1 << 13, /** Does the telescope have a command for flipping? */
+            TELESCOPE_CAN_HOME_FIND               = 1 << 14, /** Can the telescope find home position? */
+            TELESCOPE_CAN_HOME_SET                = 1 << 15, /** Can the telescope set the current position as the new home position? */
+            TELESCOPE_CAN_HOME_GO                 = 1 << 16, /** Can the telescope slew to home position? */
         } TelescopeCapability;
 
         Telescope();
@@ -309,6 +326,30 @@ class Telescope : public DefaultDevice
         bool HasTrackRate()
         {
             return capability & TELESCOPE_HAS_TRACK_RATE;
+        }
+
+        /**
+         * @return True if telescope can search for home position.
+         */
+        bool CanHomeFind()
+        {
+            return capability & TELESCOPE_CAN_HOME_FIND;
+        }
+
+        /**
+         * @return True if telescope can set current position as the home position.
+         */
+        bool CanHomeSet()
+        {
+            return capability & TELESCOPE_CAN_HOME_SET;
+        }
+
+        /**
+         * @return True if telescope can go to the home position.
+         */
+        bool CanHomeGo()
+        {
+            return capability & TELESCOPE_CAN_HOME_GO;
         }
 
         /** \brief Called to initialize basic properties required all the time */
@@ -610,6 +651,14 @@ class Telescope : public DefaultDevice
         virtual bool SetParkPosition(double Axis1Value, double Axis2Value);
 
         /**
+         * \brief Execute a homing action
+         * \param action Depending on the telescope supported homing capabilities, this could be either
+         * FIND, SET, or GO.
+         * \return State of executed action. IPS_OK if action is completed successfully, IPS_BUSY if in progress, IPS_ALERT if failed.
+         */
+        virtual IPState ExecuteHomeAction(TelescopeHomeAction action);
+
+        /**
          * @brief SetCurrentPark Set current coordinates/encoders value as the desired parking position
          * @return True if current mount coordinates are set as parking position, false on error.
          * \note If not implemented by the child class, this function by default returns false with a
@@ -705,33 +754,31 @@ class Telescope : public DefaultDevice
         */
 
         // All telescopes should produce equatorial co-ordinates
-        INumberVectorProperty EqNP;
-        INumber EqN[2];
+        INDI::PropertyNumber EqNP {2};
 
         // When a goto is issued, domes will snoop the target property
         // to start moving the dome when a telescope moves
-        INumberVectorProperty TargetNP;
-        INumber TargetN[2];
+        INDI::PropertyNumber TargetNP {2};
 
         // Abort motion
-        ISwitchVectorProperty AbortSP;
-        ISwitch AbortS[1];
+        INDI::PropertySwitch AbortSP {1};
 
         // On a coord_set message, sync, or slew
-        ISwitchVectorProperty CoordSP;
-        ISwitch CoordS[4];
+        INDI::PropertySwitch CoordSP {4};
 
         // A number vector that stores latitude and longitude
-        INumberVectorProperty LocationNP;
-        INumber LocationN[3];
+        INDI::PropertyNumber LocationNP {3};
 
         // A Switch in the client interface to park the scope
-        ISwitchVectorProperty ParkSP;
-        ISwitch ParkS[2];
+        INDI::PropertySwitch ParkSP {2};
+        enum
+        {
+            PARK,
+            UNPARK
+        };
 
         // Custom parking position
-        INumber ParkPositionN[2];
-        INumberVectorProperty ParkPositionNP;
+        INDI::PropertyNumber ParkPositionNP {2};
 
         /**
         + NAME: TELESCOPE_PARK_POSITION
@@ -754,12 +801,10 @@ class Telescope : public DefaultDevice
         };
 
         // A switch for North/South motion
-        ISwitch MovementNSS[2];
-        ISwitchVectorProperty MovementNSSP;
+        INDI::PropertySwitch MovementNSSP {2};
 
         // A switch for West/East motion
-        ISwitch MovementWES[2];
-        ISwitchVectorProperty MovementWESP;
+        INDI::PropertySwitch MovementWESP {2};
 
         // Reverse NS or WE
         INDI::PropertySwitch ReverseMovementSP {2};
@@ -770,12 +815,15 @@ class Telescope : public DefaultDevice
         };
 
         // Slew Rate
-        ISwitchVectorProperty SlewRateSP;
-        ISwitch *SlewRateS {nullptr};
+        INDI::PropertySwitch SlewRateSP {0};
 
         // UTC and UTC Offset
-        IText TimeT[2] {};
-        ITextVectorProperty TimeTP;
+        INDI::PropertyText TimeTP {2};
+        enum
+        {
+            UTC,
+            OFFSET
+        };
         void sendTimeFromSystem();
 
         // Active GPS/Dome device to snoop
@@ -787,29 +835,33 @@ class Telescope : public DefaultDevice
         };
 
         // Switch to lock if dome is closed.
-        ISwitchVectorProperty DomePolicySP;
-        ISwitch DomePolicyS[2];
+        INDI::PropertySwitch DomePolicySP {2};
 
         // Switch for choosing between motion control by 4-way joystick or two separate axes
-        ISwitchVectorProperty MotionControlModeTP;
-        ISwitch MotionControlModeT[2];
+        INDI::PropertySwitch MotionControlModeTP {2};
         enum
         {
-            MOTION_CONTROL_JOYSTICK,
-            MOTION_CONTROL_AXES
+            MOTION_CONTROL_MODE_JOYSTICK,
+            MOTION_CONTROL_MODE_AXES,
         };
 
         // Lock Joystick Axis to one direction only
-        ISwitch LockAxisS[2];
-        ISwitchVectorProperty LockAxisSP;
-
+        INDI::PropertySwitch LockAxisSP {2};
+        enum
+        {
+            LOCK_AXIS_1,
+            LOCK_AXIS_2
+        };
         // Pier Side
-        ISwitch PierSideS[2];
-        ISwitchVectorProperty PierSideSP;
+        INDI::PropertySwitch PierSideSP {2};
 
         // Pier Side Simulation
-        ISwitchVectorProperty SimulatePierSideSP;
-        ISwitch SimulatePierSideS[2];
+        INDI::PropertySwitch SimulatePierSideSP {2};
+        enum
+        {
+            SIMULATE_YES,
+            SIMULATE_NO
+        };
         bool getSimulatePierSide() const;
         void setSimulatePierSide(bool value);
 
@@ -823,8 +875,13 @@ class Telescope : public DefaultDevice
          * \brief Text Vector property defining the orbital elements of an artificial satellite (TLE).
          * \ref drivers/telescope/lx200_10micron.cpp "Example implementation"
          */
-        ITextVectorProperty TLEtoTrackTP;
-        IText TLEtoTrackT[1] {};
+        INDI::PropertyText TLEtoTrackTP{1};
+        /**
+         * \brief Text Vector property defining the start and end of a satellite pass (window contains pass).
+         * \ref drivers/telescope/lx200_10micron.cpp "Example implementation"
+         */
+        INDI::PropertyText SatPassWindowTP {2};
+
         /**
          * \struct SatelliteWindow
          * \brief Satellite pass: window start and end.
@@ -833,14 +890,13 @@ class Telescope : public DefaultDevice
         {
             SAT_PASS_WINDOW_START, ///< Index for start of the window
             SAT_PASS_WINDOW_END, ///< Index for end of the window
-            SAT_PASS_WINDOW_COUNT ///< Number of indices
         } SatelliteWindow;
+
         /**
-         * \brief Text Vector property defining the start and end of a satellite pass (window contains pass).
+         * \brief Switch Vector property defining the state of the satellite tracking of the mount.
          * \ref drivers/telescope/lx200_10micron.cpp "Example implementation"
          */
-        ITextVectorProperty SatPassWindowTP;
-        IText SatPassWindowT[SAT_PASS_WINDOW_COUNT] {};
+        INDI::PropertySwitch TrackSatSP {2};
         /**
          * \struct SatelliteTracking
          * \brief Possible states for the satellite tracking.
@@ -849,30 +905,23 @@ class Telescope : public DefaultDevice
         {
             SAT_TRACK, ///< Track signal
             SAT_HALT, ///< Halt signal (abort)
-            SAT_TRACK_COUNT ///< State counter
         } SatelliteTracking;
-        /**
-         * \brief Switch Vector property defining the state of the satellite tracking of the mount.
-         * \ref drivers/telescope/lx200_10micron.cpp "Example implementation"
-         */
-        ISwitchVectorProperty TrackSatSP;
-        ISwitch TrackSatS[SAT_TRACK_COUNT];
 
         // PEC State
-        ISwitch PECStateS[2];
-        ISwitchVectorProperty PECStateSP;
+        INDI::PropertySwitch PECStateSP {2};
 
         // Track Mode
-        ISwitchVectorProperty TrackModeSP;
-        ISwitch *TrackModeS { nullptr };
+        INDI::PropertySwitch TrackModeSP {0};
 
         // Track State
-        ISwitchVectorProperty TrackStateSP;
-        ISwitch TrackStateS[2];
+        INDI::PropertySwitch TrackStateSP {2};
+        // ISwitch TrackStateS[2];
 
         // Track Rate
-        INumberVectorProperty TrackRateNP;
-        INumber TrackRateN[2];
+        INDI::PropertyNumber TrackRateNP {2};
+
+        // Home Position
+        INDI::PropertySwitch HomeSP {0};
 
         /**@}*/
 

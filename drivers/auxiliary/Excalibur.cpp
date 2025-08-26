@@ -1,3 +1,25 @@
+/*******************************************************************************
+  Copyright(c) 2022 RBFocus. All rights reserved.
+  Copyright(c) 2025 Jasem Mutlaq. All rights reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of the GNU General Public License as published by the Free
+  Software Foundation; either version 2 of the License, or (at your option)
+  any later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+  more details.
+
+  You should have received a copy of the GNU Library General Public License
+  along with this library; see the file COPYING.LIB.  If not, write to
+  the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+  Boston, MA 02110-1301, USA.
+
+  The full GNU General Public License is included in this distribution in the
+  file called LICENSE.
+*******************************************************************************/
 
 #include "Excalibur.h"
 
@@ -7,38 +29,40 @@
 #include <cerrno>
 #include <cstring>
 #include <memory>
+#include <chrono>
+#include <thread>
+
 #include <termios.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <sys/ioctl.h>
 #include <math.h>
-#define CLOSE_CMD "S1#"
-#define OPEN_CMD "S0#"
 
 static std::unique_ptr<Excalibur> flatmaster(new Excalibur());
 
-
-Excalibur::Excalibur() : LightBoxInterface(this, true)
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
+Excalibur::Excalibur() : LightBoxInterface(this), DustCapInterface(this)
 {
-    setVersion(1, 0);
+    setVersion(1, 1);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::initProperties()
 {
     INDI::DefaultDevice::initProperties();
 
-    IUFillText(&StatusT[0], "Cover", "Cover", nullptr);
-    IUFillText(&StatusT[1], "Light", "Light", nullptr);
-    IUFillTextVector(&StatusTP, StatusT, 2, getDeviceName(), "Status", "Status", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
-
-    initDustCapProperties(getDeviceName(), MAIN_CONTROL_TAB);
-    initLightBoxProperties(getDeviceName(), MAIN_CONTROL_TAB);
+    DI::initProperties(MAIN_CONTROL_TAB);
+    LI::initProperties(MAIN_CONTROL_TAB, CAN_DIM);
 
     setDriverInterface(AUX_INTERFACE | LIGHTBOX_INTERFACE | DUSTCAP_INTERFACE);
 
-    LightIntensityN[0].min  = 0;
-    LightIntensityN[0].max  = 3000;
-    LightIntensityN[0].step = 1;
+    LightIntensityNP[0].setMin(0);
+    LightIntensityNP[0].setMax(3000);
+    LightIntensityNP[0].setStep(100);
 
     addAuxControls();
 
@@ -54,218 +78,247 @@ bool Excalibur::initProperties()
     return true;
 }
 
-
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::updateProperties()
 {
     INDI::DefaultDevice::updateProperties();
 
-    if (isConnected())
-    {
-        defineProperty(&ParkCapSP);
-        defineProperty(&LightSP);
-        defineProperty(&LightIntensityNP);
-        defineProperty(&StatusTP);
+    DI::updateProperties();
+    LI::updateProperties();
 
-    }
-    else
-    {
-        deleteProperty(ParkCapSP.name);
-        deleteProperty(LightSP.name);
-        deleteProperty(LightIntensityNP.name);
-        deleteProperty(StatusTP.name);
-
-    }
-
-    updateLightBoxProperties();
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 const char *Excalibur::getDefaultName()
 {
     return "RBF Excalibur";
 }
 
-
-
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::Ack()
 {
     PortFD = serialConnection->getPortFD();
 
     char response[16] = {0};
-    if(sendCommand("#", response))
+    // Try up to 3 times before giving up
+    for (int i = 0; i < 3; i++)
     {
-        if(strstr("FLAT.FLAP!#", response) != nullptr)
+        if(sendCommand("#", response))
         {
-            LightS[1].s = ISS_ON;
-            LightS[0].s = ISS_OFF;
-            IDSetSwitch(&LightSP, nullptr);
-            deviceStatus();
-            return true;
+            if(strstr("FLAT.FLAP!#", response) != nullptr)
+            {
+                LightSP[FLAT_LIGHT_ON].setState(ISS_OFF);
+                LightSP[FLAT_LIGHT_OFF].setState(ISS_ON);
+                LightSP.apply();
+                return true;
 
+            }
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    else
-    {
-        LOG_ERROR("Ack failed.");
-        return false;
-    }
-
+    LOG_ERROR("Ack failed.");
     return false;
+
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::EnableLightBox(bool enable)
 {
-    char response[20]= {0};
+    char response[20] = {0};
     char cmd[16] = {0};
-    if (!enable){
+    if (!enable)
+    {
         snprintf(cmd, 16, "L%d##", 0);
-
-                sendCommand(cmd,response);
-                IUSaveText(&StatusT[1], "Off");
-                IDSetText(&StatusTP, nullptr);
-                return true;
-
-
-
+        return sendCommand(cmd, response);
     }
     else
     {
+        snprintf(cmd, 16, "L%d##", (int)LightIntensityNP[0].getValue());
 
-        snprintf(cmd, 16, "L%d##", (int)LightIntensityN[0].value);
-
-                sendCommand(cmd,response);
-                IUSaveText(&StatusT[1], "On");
-                IDSetText(&StatusTP, nullptr);
-                return true;
-
-
+        return sendCommand(cmd, response);
     }
 
-
-    return false;
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::SetLightBoxBrightness(uint16_t value)
 {
-    if(LightS[FLAT_LIGHT_ON].s != ISS_ON)
+    if(LightSP[FLAT_LIGHT_ON].getState() != ISS_ON)
     {
         LOG_ERROR("You must set On the Flat Light first.");
         return false;
     }
-    if( ParkCapS[0].s != ISS_ON)
+
+    if( ParkCapSP[0].getState() != ISS_ON)
     {
         LOG_ERROR("You must Park eXcalibur first.");
         return false;
     }
 
     //char response[20] = {0};
-     char cmd[DRIVER_RES] = {0};
-
-     snprintf(cmd, 30, "L%d##", value);
-     sendCommand(cmd);
-      return  true;
-
-
-
+    char cmd[DRIVER_RES] = {0};
+    snprintf(cmd, 30, "L%d##", value);
+    return sendCommand(cmd);
 }
+
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 IPState Excalibur::ParkCap()
 {
-
-    sendCommand("S1#");
-
-
-    //IUSaveText(&StatusT[0], "Closed");
-     //IUSaveText(&StatusT[1], "On");
-    IUResetSwitch(&ParkCapSP);
-    ParkCapS[0].s = ISS_ON;
-    ParkCapSP.s = IPS_OK;
-    LOG_INFO("Cover closed.");
-    IDSetSwitch(&ParkCapSP, nullptr);
-    IDSetText(&StatusTP, nullptr);
-    return IPS_OK;
+    return sendCommand("S1#") ? IPS_BUSY : IPS_ALERT;
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 IPState Excalibur::UnParkCap()
 {
-
-    sendCommand("S0#");
-
-    // Set cover status to random value outside of range to force it to refresh
-    //IUSaveText(&StatusT[0], "Open");
-    IUSaveText(&StatusT[1], "Off");
-    IUResetSwitch(&ParkCapSP);
-    ParkCapS[1].s = ISS_ON;
-    ParkCapSP.s = IPS_OK;
-    LOG_INFO("Cover open.");
-    IDSetSwitch(&ParkCapSP, nullptr);
-    IDSetText(&StatusTP, nullptr);
-    return IPS_OK;
+    return sendCommand("S0#") ? IPS_BUSY : IPS_ALERT;
 }
+
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 void Excalibur::TimerHit()
 {
     if (!isConnected())
         return;
 
-    deviceStatus();
-
-    // parking or unparking timed out, try again
-    if (ParkCapSP.s == IPS_BUSY && !strcmp(StatusT[0].text, "Timed out"))
-    {
-        if (ParkCapS[0].s == ISS_ON)
-            ParkCap();
-        else
-            UnParkCap();
-    }
+    updateDeviceStatus();
 
     SetTimer(getCurrentPollingPeriod());
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
 {
-    if (processLightBoxNumber(dev, name, values, names, n))
+    if (LI::processNumber(dev, name, values, names, n))
         return true;
 
     return INDI::DefaultDevice::ISNewNumber(dev, name, values, names, n);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        if (processLightBoxText(dev, name, texts, names, n))
+        if (LI::processText(dev, name, texts, names, n))
             return true;
     }
 
     return INDI::DefaultDevice::ISNewText(dev, name, texts, names, n);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        if (processDustCapSwitch(dev, name, states, names, n))
+        if (DI::processSwitch(dev, name, states, names, n))
             return true;
-        if (processLightBoxSwitch(dev, name, states, names, n))
+        if (LI::processSwitch(dev, name, states, names, n))
             return true;
     }
 
     return INDI::DefaultDevice::ISNewSwitch(dev, name, states, names, n);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::ISSnoopDevice(XMLEle *root)
 {
-    snoopLightBox(root);
+    LI::snoop(root);
 
     return INDI::DefaultDevice::ISSnoopDevice(root);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::saveConfigItems(FILE *fp)
 {
     INDI::DefaultDevice::saveConfigItems(fp);
 
-    return saveLightBoxConfigItems(fp);
+    return LI::saveConfigItems(fp);
 }
 
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
+void Excalibur::updateDeviceStatus()
+{
+    char res[DRIVER_RES] = {0};
+
+    // Get Light Intensity Status
+    sendCommand("O#", res);
+
+    int32_t pos;
+    int rc = sscanf(res, "%d#", &pos);
+
+    auto previousIntensity = LightIntensityNP[0].getValue();
+
+    if (rc > 0)
+    {
+        LightIntensityNP[0].setValue(pos);
+        // Only update if necessary
+        if (previousIntensity != pos)
+            LightIntensityNP.apply();
+    }
+
+    auto haveLight = LightIntensityNP[0].getValue() > 0;
+
+    // If we have light, but switch is off, then turn it on and vice versa
+    if ( (haveLight && LightSP[FLAT_LIGHT_OFF].getState() == ISS_ON) || (!haveLight
+            && LightSP[FLAT_LIGHT_ON].getState() == ISS_ON) )
+    {
+        LightSP.reset();
+        LightSP[FLAT_LIGHT_ON].setState(haveLight ? ISS_ON : ISS_OFF);
+        LightSP[FLAT_LIGHT_OFF].setState(haveLight ? ISS_OFF : ISS_ON);
+        LightSP.apply();
+    }
+
+    // Get Dust Cap Status
+    sendCommand("P#", res);
+    int32_t pos2;
+    sscanf(res, "%d#", &pos2);
+
+    auto isClosed = pos2 <= 0;
+
+    if (ParkCapSP.getState() == IPS_BUSY || ParkCapSP.getState() == IPS_IDLE)
+    {
+        ParkCapSP.setState(IPS_OK);
+        ParkCapSP.reset();
+        // Parked? If closed, then yes
+        ParkCapSP[INDI_ENABLED].setState(isClosed ? ISS_ON : ISS_OFF);
+        // Unparked?
+        ParkCapSP[INDI_DISABLED].setState(isClosed ? ISS_OFF : ISS_ON);
+        ParkCapSP.apply();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::sendCommand(const char *command, char *res)
 {
     int nbytes_written = 0, nbytes_read = 0, rc = -1;
@@ -303,64 +356,4 @@ bool Excalibur::sendCommand(const char *command, char *res)
     tcflush(PortFD, TCIOFLUSH);
 
     return true;
-}
-void Excalibur::deviceStatus()
-{
-    char res[DRIVER_RES] = {0};
-
-    sendCommand("O#", res);
-
-    int32_t pos;
-    int rc = sscanf(res, "%d#", &pos);
-
-    if (rc > 0)
-    {
-       LightIntensityN[0].value = pos;
-       IDSetNumber(&LightIntensityNP, nullptr);
-    }
-    if(LightIntensityN[0].value>0)
-    {
-        IUSaveText(&StatusT[1], "On");
-        if (LightS[1].s == ISS_ON)
-        {
-            LightS[0].s = ISS_ON;
-            LightS[1].s = ISS_OFF;
-            IDSetSwitch(&LightSP, nullptr);
-        }
-
-    }
-    else
-    {
-        IUSaveText(&StatusT[1], "Off");
-
-    }
-
-
-    sendCommand("P#", res);
-
-    int32_t pos2;
-    sscanf(res, "%d#", &pos2);
-
-
-    if(pos2<=0){
-    IUSaveText(&StatusT[0], "Closed");
-    if ( ParkCapS[0].s == ISS_OFF)
-        {
-            ParkCapS[0].s = ISS_ON;
-            IDSetSwitch(&LightSP, nullptr);
-        }
-    }
-    else
-    {
-        IUSaveText(&StatusT[0], "Open");
-        if ( ParkCapS[1].s == ISS_OFF)
-            {
-                ParkCapS[1].s = ISS_ON;
-                 IUSaveText(&StatusT[1], "Off");
-                IDSetSwitch(&LightSP, nullptr);
-            }
-
-    }
-    IDSetText(&StatusTP, nullptr);
-
 }

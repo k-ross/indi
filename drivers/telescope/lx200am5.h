@@ -34,7 +34,7 @@ class LX200AM5 : public LX200Generic
         virtual bool initProperties() override;
 
         virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
-        virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;        
+        virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
 
     protected:
         virtual const char *getDefaultName() override;
@@ -46,7 +46,7 @@ class LX200AM5 : public LX200Generic
         virtual bool ReadScopeStatus() override;
         virtual bool SetSlewRate(int index) override;
 
-        // Tracking        
+        // Tracking
         virtual bool SetTrackEnabled(bool enabled) override;
 
         // Time & Location
@@ -57,6 +57,9 @@ class LX200AM5 : public LX200Generic
         // Parking
         virtual bool Park() override;
         virtual bool UnPark() override;
+
+        // Home
+        virtual IPState ExecuteHomeAction(TelescopeHomeAction action) override;
 
     private:
 
@@ -82,14 +85,14 @@ class LX200AM5 : public LX200Generic
         /// Properties
         //////////////////////////////////////////////////////////////////////////////////
         // Go Home
-        INDI::PropertySwitch HomeSP {1};
+        //INDI::PropertySwitch HomeSP {1};
         // Mount Type
         INDI::PropertySwitch MountTypeSP {2};
         enum
         {
             Azimuth,
             Equatorial
-        };        
+        };
         // Guide Rate
         INDI::PropertyNumber GuideRateNP {1};
         // Buzzer control
@@ -101,6 +104,23 @@ class LX200AM5 : public LX200Generic
             High
         };
 
+        // Heavy duty control
+        INDI::PropertySwitch HeavyDutyModeSP {2};
+
+        // Meridian Flip Control
+        INDI::PropertySwitch MeridianFlipSP {2};
+
+        // Post Meridian Track Control
+        INDI::PropertySwitch PostMeridianTrackSP {2};
+        enum
+        {
+            TRACK,
+            STOP
+        };
+
+        // Meridian Limit
+        INDI::PropertyNumber MeridianLimitNP {1};
+
 
         //////////////////////////////////////////////////////////////////////////////////
         /// AM5 Specific
@@ -109,6 +129,7 @@ class LX200AM5 : public LX200Generic
 
         // Homing
         bool goHome();
+        bool setHome();
 
         // Guide Rate
         bool setGuideRate(double value);
@@ -118,6 +139,10 @@ class LX200AM5 : public LX200Generic
         bool getBuzzer();
         bool setBuzzer(int value);
 
+        // Heavy Duty Mode
+        bool getHeavyDutyMode();
+        bool setHeavyDutyMode(bool enable);
+
         // Mount type
         bool setMountType(int type);
         bool getMountType();
@@ -125,6 +150,10 @@ class LX200AM5 : public LX200Generic
         // Track Mode
         bool getTrackMode();
         bool isTracking();
+
+        // Meridian Flip
+        bool setMeridianFlipSettings(bool enabled, bool track, double limit);
+        bool getMeridianFlipSettings();
 
 
         //////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +166,6 @@ class LX200AM5 : public LX200Generic
         // Maximum buffer for sending/receiving.
         static constexpr const uint8_t DRIVER_LEN {64};
         // Slew Modes
-        static constexpr const uint8_t SLEW_MODES {10};
+        static constexpr const uint8_t SLEW_MODES {9};
+        static constexpr const char * MERIDIAN_FLIP_TAB {"Meridian Flip"};
 };
-
-

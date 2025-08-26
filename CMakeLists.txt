@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.18)
 PROJECT(libindi C CXX)
 
 # As moc files are generated in the binary dir, tell CMake
@@ -44,8 +44,8 @@ endif()
 
 # ####################################  INDI version  ################################################
 set(CMAKE_INDI_VERSION_MAJOR 2)
-set(CMAKE_INDI_VERSION_MINOR 0)
-set(CMAKE_INDI_VERSION_RELEASE 7)
+set(CMAKE_INDI_VERSION_MINOR 1)
+set(CMAKE_INDI_VERSION_RELEASE 5)
 
 set(INDI_SOVERSION ${CMAKE_INDI_VERSION_MAJOR})
 set(CMAKE_INDI_VERSION_STRING "${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE}")
@@ -90,11 +90,12 @@ OPTION(INDI_BUILD_CLIENT "Build INDI POSIX Client" ON)
 OPTION(INDI_BUILD_QT5_CLIENT "Build INDI Qt5 Client" OFF)
 OPTION(INDI_BUILD_UNITTESTS "Build INDI tests" OFF)
 OPTION(INDI_BUILD_INTEGTESTS "Build INDI integration tests" OFF)
-OPTION(INDI_BUILD_WEBSOCKET "Build INDI with Websocket support" OFF)
 OPTION(INDI_FAST_BLOB "Build INDI with Fast BLOB support" ON)
 OPTION(INDI_BUILD_SHARED "Build shared library" ON)
 OPTION(INDI_BUILD_STATIC "Build static library" ON)
 OPTION(INDI_BUILD_XISF "Build XISF support" ON)
+OPTION(INDI_BUILD_EXAMPLES "Build INDI examples" ON)
+OPTION(INDI_INSTALL_UDEV_RULES "Install INDI udev rules" ON)
 
 # System provided or bundled libs
 OPTION(INDI_SYSTEM_HTTPLIB "Use system provided httplib" OFF)
@@ -261,20 +262,6 @@ if(INDI_BUILD_QT5_CLIENT)
     add_subdirectory(libs/indiclientqt)
 endif(INDI_BUILD_QT5_CLIENT)
 
-# ##################################################################################################
-#
-# Component   : Websocket
-# Dependencies: libwebsocketpp, libboost, asio
-# Supported OS: Linux, BSD, MacOS, Cygwin
-#
-# ##################################################################################################
-if(INDI_BUILD_WEBSOCKET)
-    find_package(websocketpp REQUIRED)
-    find_package(Boost COMPONENTS system thread)
-    include_directories(${Boost_INCLUDE_DIRS})
-    add_definitions(-DHAVE_WEBSOCKET)
-    set(HAVE_WEBSOCKET 1)
-endif(INDI_BUILD_WEBSOCKET)
 
 # ##################################################################################################
 #
@@ -298,7 +285,7 @@ if(INDI_BUILD_DRIVERS)
         find_package(GSL REQUIRED)
         find_package(JPEG REQUIRED)
         find_library(M_LIB m)
-        if(CYGWIN)
+        if(CYGWIN OR UNIX)
             find_package(Iconv REQUIRED)
         endif()
 
@@ -356,7 +343,9 @@ if(INDI_BUILD_DRIVERS)
         # ########### EXamples ###############
         # ####################################
         if(INDI_BUILD_CLIENT)
-            add_subdirectory(examples)
+            if(INDI_BUILD_EXAMPLES)
+                add_subdirectory(examples)
+            endif()
         else()
             message(WARNING "Skipping build of examples since INDI POSIX client is not built")
         endif()

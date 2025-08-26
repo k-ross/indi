@@ -31,6 +31,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <algorithm>
+#include <chrono>
+#include <random>
+#include <thread>
 
 static pthread_cond_t cv         = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t condMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -47,8 +50,8 @@ CCDSim::CCDSim() : INDI::FilterInterface(this)
     time(&RunStart);
 
     // Filter stuff
-    FilterSlotN[0].min = 1;
-    FilterSlotN[0].max = 8;
+    FilterSlotNP[0].setMin(1);
+    FilterSlotNP[0].setMax(8);
 }
 
 bool CCDSim::setupParameters()
@@ -171,7 +174,7 @@ bool CCDSim::initProperties()
                   ISR_1OFMANY, 0, IPS_IDLE);
 
     // Gain
-    GainNP[0].fill("GAIN", "value", "%.f", 0, 100, 10, 90);
+    GainNP[0].fill("GAIN", "value", "%.f", 0, 300, 10, 90);
     GainNP.fill(getDeviceName(), "CCD_GAIN", "Gain", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     // Offset
@@ -193,7 +196,10 @@ bool CCDSim::initProperties()
     for (uint8_t i = 0; i < Resolutions.size(); i++)
     {
         std::ostringstream ss;
-        ss << Resolutions[i].first << " x " << Resolutions[i].second;
+        if (Resolutions[i].first > 0)
+            ss << Resolutions[i].first << " x " << Resolutions[i].second;
+        else
+            ss << "Custom";
         ResolutionSP[i].fill(ss.str().c_str(), ss.str().c_str(), i == 0 ? ISS_ON : ISS_OFF);
     }
     ResolutionSP.fill(getDeviceName(), "CCD_RESOLUTION", "Resolution", SIMULATOR_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
@@ -220,10 +226,6 @@ bool CCDSim::initProperties()
     cap |= CCD_HAS_STREAMING;
     cap |= CCD_HAS_DSP;
 
-#ifdef HAVE_WEBSOCKET
-    cap |= CCD_HAS_WEB_SOCKET;
-#endif
-
     SetCCDCapability(cap);
 
     // This should be called after the initial SetCCDCapability (above)
@@ -232,8 +234,8 @@ bool CCDSim::initProperties()
 
     INDI::FilterInterface::initProperties(FILTER_TAB);
 
-    FilterSlotN[0].min = 1;
-    FilterSlotN[0].max = 8;
+    FilterSlotNP[0].setMin(1);
+    FilterSlotNP[0].setMax(8);
 
     addDebugControl();
 
@@ -247,9 +249,9 @@ void CCDSim::setBayerEnabled(bool onOff)
     if (onOff)
     {
         SetCCDCapability(GetCCDCapability() | CCD_HAS_BAYER);
-        IUSaveText(&BayerT[0], "0");
-        IUSaveText(&BayerT[1], "0");
-        IUSaveText(&BayerT[2], "RGGB");
+        BayerTP[CFA_OFFSET_X].setText("0");
+        BayerTP[CFA_OFFSET_Y].setText("0");
+        BayerTP[CFA_TYPE].setText("RGGB");
     }
     else
     {
@@ -315,9 +317,9 @@ bool CCDSim::updateProperties()
 int CCDSim::SetTemperature(double temperature)
 {
     TemperatureRequest = temperature;
-    if (fabs(temperature - TemperatureN[0].value) < 0.1)
+    if (std::abs(temperature - TemperatureNP[0].getValue()) < 0.1)
     {
-        TemperatureN[0].value = temperature;
+        TemperatureNP[0].setValue(temperature);
         return 1;
     }
 
@@ -486,21 +488,21 @@ void CCDSim::TimerHit()
         }
     }
 
-    if (TemperatureNP.s == IPS_BUSY)
+    if (TemperatureNP.getState() == IPS_BUSY)
     {
-        if (TemperatureRequest < TemperatureN[0].value)
-            TemperatureN[0].value = std::max(TemperatureRequest, TemperatureN[0].value - 0.5);
+        if (TemperatureRequest < TemperatureNP[0].getValue())
+            TemperatureNP[0].setValue(std::max(TemperatureRequest, TemperatureNP[0].getValue() - 0.5));
         else
-            TemperatureN[0].value = std::min(TemperatureRequest, TemperatureN[0].value + 0.5);
+            TemperatureNP[0].setValue(std::min(TemperatureRequest, TemperatureNP[0].getValue() + 0.5));
 
-        if (std::abs(TemperatureN[0].value - m_LastTemperature) > 0.1)
+        if (std::abs(TemperatureNP[0].getValue() - m_LastTemperature) > 0.1)
         {
-            m_LastTemperature = TemperatureN[0].value;
-            IDSetNumber(&TemperatureNP, nullptr);
+            m_LastTemperature = TemperatureNP[0].getValue();
+            TemperatureNP.apply();
         }
 
         // Above 20, cooler is off
-        if (TemperatureN[0].value >= 20)
+        if (TemperatureNP[0].getValue() >= 20)
         {
             CoolerSP[INDI_ENABLED].setState(ISS_OFF);
             CoolerSP[INDI_DISABLED].setState(ISS_ON);
@@ -730,8 +732,6 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
             if (pp != nullptr)
             {
                 char line[256];
-                int stars = 0;
-                int lines = 0;
 
                 while (fgets(line, 256, pp) != nullptr)
                 {
@@ -753,9 +753,6 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
                                     &band, &c, plate, ob, &dist, &dir);
                     if (rc == 12)
                     {
-                        lines++;
-                        stars++;
-
                         //  Convert the ra/dec to standard co-ordinates
                         double sx;    //  standard co-ords
                         double sy;    //
@@ -931,14 +928,13 @@ int CCDSim::DrawImageStar(INDI::CCDChip * targetChip, float mag, float x, float 
     //  scale up linearly for exposure time
     flux = flux * exposure_time;
 
-    float qx;
     //  we need a box size that gives a radius at least 3 times fwhm
-    qx       = seeing / ImageScalex;
-    qx       = qx * 3;
+    //qx       = seeing / ImageScalex;
+    //qx       = qx * 3;
     //boxsizex = (int)qx;
     //boxsizex++;
-    qx       = seeing / ImageScaley;
-    qx       = qx * 3;
+    auto qx = seeing / ImageScaley;
+    qx = qx * 3;
     boxsizey = static_cast<int>(qx);
     boxsizey++;
 
@@ -1054,12 +1050,10 @@ bool CCDSim::ISNewText(const char * dev, const char * name, char * texts[], char
     {
         //  This is for our device
         //  Now lets see if it's something we process here
-        if (strcmp(name, FilterNameTP->name) == 0)
-        {
-            INDI::FilterInterface::processText(dev, name, texts, names, n);
+        if (INDI::FilterInterface::processText(dev, name, texts, names, n))
             return true;
-        }
-        else if (DirectoryTP.isNameMatch(name))
+
+        if (DirectoryTP.isNameMatch(name))
         {
             DirectoryTP.update(texts, names, n);
             if (DirectorySP[INDI_ENABLED].getState() == ISS_OFF || (DirectorySP[INDI_ENABLED].getState() == ISS_ON && watchDirectory()))
@@ -1080,6 +1074,8 @@ bool CCDSim::ISNewNumber(const char * dev, const char * name, double values[], c
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
+        if (INDI::FilterInterface::processNumber(dev, name, values, names, n))
+            return true;
 
         if (GainNP.isNameMatch(name))
         {
@@ -1127,11 +1123,6 @@ bool CCDSim::ISNewNumber(const char * dev, const char * name, double values[], c
             usePE = true;
 
             EqPENP.apply();
-            return true;
-        }
-        else if (!strcmp(name, FilterSlotNP.name))
-        {
-            INDI::FilterInterface::processNumber(dev, name, values, names, n);
             return true;
         }
         else if (FocusSimulationNP.isNameMatch(name))
@@ -1183,7 +1174,7 @@ bool CCDSim::ISNewSwitch(const char * dev, const char * name, ISState * states, 
             {
                 CoolerSP.setState(IPS_IDLE);
                 m_TargetTemperature = 20;
-                TemperatureNP.s     = IPS_BUSY;
+                TemperatureNP.setState(IPS_BUSY);
                 m_TemperatureCheckTimer.start();
                 m_TemperatureElapsedTimer.start();
             }
@@ -1223,7 +1214,7 @@ bool CCDSim::ISNewSwitch(const char * dev, const char * name, ISState * states, 
             ResolutionSP.apply();
 
             int index = ResolutionSP.findOnSwitchIndex();
-            if (index >= 0 && index < static_cast<int>(Resolutions.size()))
+            if (index >= 0 && index < static_cast<int>(Resolutions.size() - 1))
             {
                 SimulatorSettingsNP[SIM_XRES].setValue(Resolutions[index].first);
                 SimulatorSettingsNP[SIM_YRES].setValue(Resolutions[index].second);
@@ -1410,6 +1401,12 @@ bool CCDSim::saveConfigItems(FILE * fp)
 
 bool CCDSim::SelectFilter(int f)
 {
+    // Sleep randomly between 1500 and 2000ms to simulate filter selection
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist(1500, 2000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(dist(gen)));
+
     CurrentFilter = f;
     SelectFilterDone(f);
     return true;
@@ -1595,9 +1592,9 @@ bool CCDSim::loadNextImage()
     if (channels == 1 && strlen(bayer_pattern)  == 4)
     {
         SetCCDCapability(GetCCDCapability() | CCD_HAS_BAYER);
-        IUSaveText(&BayerT[0], "0");
-        IUSaveText(&BayerT[1], "0");
-        IUSaveText(&BayerT[2], bayer_pattern);
+        BayerTP[CFA_OFFSET_X].setText("0");
+        BayerTP[CFA_OFFSET_Y].setText("0");
+        BayerTP[CFA_TYPE].setText(bayer_pattern);
     }
     else
     {

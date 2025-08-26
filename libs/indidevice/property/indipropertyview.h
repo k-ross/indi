@@ -143,9 +143,26 @@ struct PropertyView: PROPERTYVIEW_BASE_ACCESS WidgetTraits<T>::PropertyType
         }
 
         template <typename X = T, enable_if_is_same_t<X, ISwitch> = true>
+        bool isSwitchOn(const std::string &name) const
+        {
+            auto onSwitch = findOnSwitch();
+            return (onSwitch && onSwitch->isNameMatch(name));
+        }
+
+        template <typename X = T, enable_if_is_same_t<X, ISwitch> = true>
         int findOnSwitchIndex() const
         {
             return IUFindOnSwitchIndex(this);
+        }
+
+        template <typename X = T, enable_if_is_same_t<X, ISwitch> = true>
+        std::string findOnSwitchName() const
+        {
+            auto onSwitch = findOnSwitch();
+            if (onSwitch)
+                return onSwitch->getName();
+            else
+                return std::string();
         }
 
     public: // only for INumber
@@ -233,6 +250,7 @@ struct PropertyView: PROPERTYVIEW_BASE_ACCESS WidgetTraits<T>::PropertyType
     public: // only driver side
         bool load();
         void save(FILE *f) const;                              /* outside implementation */
+        bool snoop(XMLEle *root);                              /* outside implementation */
 
         void vapply(const char *format, va_list args)
         const;   /* outside implementation - only driver side, see indipropertyview_driver.cpp */
@@ -308,6 +326,15 @@ struct PropertyView: PROPERTYVIEW_BASE_ACCESS WidgetTraits<T>::PropertyType
             const char * const names[], int n
         ); /* outside implementation - only driver side, see indipropertyview_driver.cpp */
 
+        template <typename X = T, enable_if_is_same_t<X, IText> = true>
+        bool isUpdated(const char * const texts[], const char * const names[], int n) const;
+
+        template <typename X = T, enable_if_is_same_t<X, INumber> = true>
+        bool isUpdated(const double values[], const char * const names[], int n) const;
+
+        template <typename X = T, enable_if_is_same_t<X, ISwitch> = true>
+        bool isUpdated(const ISState states[], const char * const names[], int n) const;
+
 
     public:
         WidgetType *begin() const
@@ -358,20 +385,23 @@ struct WidgetView<IText>: PROPERTYVIEW_BASE_ACCESS IText
         {
             memset(this, 0, sizeof(*this));
         }
-        WidgetView(const WidgetView &other): Type(other)
+        WidgetView(const WidgetView<Type> &other): Type(other)
         {
             this->text = nullptr;
-            setText(other.text);
+            if (other.text != nullptr)
+            {
+                setText(other.text);
+            }
         }
-        WidgetView(WidgetView &&other): Type(other)
+        WidgetView(WidgetView<Type> &&other): Type(other)
         {
             memset(static_cast<Type*>(&other), 0, sizeof(other));
         }
-        WidgetView &operator=(const WidgetView &other)
+        WidgetView<Type> &operator=(const WidgetView<Type> &other)
         {
             return *this = WidgetView(other);
         }
-        WidgetView &operator=(WidgetView &&other)
+        WidgetView<Type> &operator=(WidgetView<Type> &&other)
         {
             std::swap(static_cast<Type &>(other), static_cast<Type &>(*this));
             return *this;
@@ -472,7 +502,7 @@ struct WidgetView<IText>: PROPERTYVIEW_BASE_ACCESS IText
         {
             return getLabel() == otherLabel;
         }
-        
+
         bool isEmpty() const
         {
             return getText()[0] == '\0';
@@ -499,16 +529,16 @@ struct WidgetView<INumber>: PROPERTYVIEW_BASE_ACCESS INumber
         {
             memset(this, 0, sizeof(*this));
         }
-        WidgetView(const WidgetView &other): Type(other)       { }
-        WidgetView(WidgetView &&other): Type(other)
+        WidgetView(const WidgetView<Type> &other): Type(other)       { }
+        WidgetView(WidgetView<Type> &&other): Type(other)
         {
             memset(static_cast<Type*>(&other), 0, sizeof(other));
         }
-        WidgetView &operator=(const WidgetView &other)
+        WidgetView<Type> &operator=(const WidgetView<Type> &other)
         {
             return *this = WidgetView(other);
         }
-        WidgetView &operator=(WidgetView &&other)
+        WidgetView<Type> &operator=(WidgetView<Type> &&other)
         {
             std::swap(static_cast<Type &>(other), static_cast<Type &>(*this));
             return *this;
@@ -663,16 +693,16 @@ struct WidgetView<ISwitch>: PROPERTYVIEW_BASE_ACCESS ISwitch
         {
             memset(this, 0, sizeof(*this));
         }
-        WidgetView(const WidgetView &other): Type(other)       { }
-        WidgetView(WidgetView &&other): Type(other)
+        WidgetView(const WidgetView<Type> &other): Type(other)       { }
+        WidgetView(WidgetView<Type> &&other): Type(other)
         {
             memset(static_cast<Type*>(&other), 0, sizeof(other));
         }
-        WidgetView &operator=(const WidgetView &other)
+        WidgetView<Type> &operator=(const WidgetView<Type> &other)
         {
             return *this = WidgetView(other);
         }
-        WidgetView &operator=(WidgetView &&other)
+        WidgetView<Type> &operator=(WidgetView<Type> &&other)
         {
             std::swap(static_cast<Type &>(other), static_cast<Type &>(*this));
             return *this;
@@ -792,16 +822,16 @@ struct WidgetView<ILight>: PROPERTYVIEW_BASE_ACCESS ILight
         {
             memset(this, 0, sizeof(*this));
         }
-        WidgetView(const WidgetView &other): Type(other)       { }
-        WidgetView(WidgetView &&other): Type(other)
+        WidgetView(const WidgetView<Type> &other): Type(other)       { }
+        WidgetView(WidgetView<Type> &&other): Type(other)
         {
             memset(static_cast<Type*>(&other), 0, sizeof(other));
         }
-        WidgetView &operator=(const WidgetView &other)
+        WidgetView<Type> &operator=(const WidgetView<Type> &other)
         {
             return *this = WidgetView(other);
         }
-        WidgetView &operator=(WidgetView &&other)
+        WidgetView<Type> &operator=(WidgetView<Type> &&other)
         {
             std::swap(static_cast<Type &>(other), static_cast<Type &>(*this));
             return *this;
@@ -921,16 +951,16 @@ struct WidgetView<IBLOB>: PROPERTYVIEW_BASE_ACCESS IBLOB
         {
             memset(this, 0, sizeof(*this));
         }
-        WidgetView(const WidgetView &other): Type(other)       { }
-        WidgetView(WidgetView &&other): Type(other)
+        WidgetView(const WidgetView<Type> &other): Type(other)       { }
+        WidgetView(WidgetView<Type> &&other): Type(other)
         {
             memset(static_cast<Type*>(&other), 0, sizeof(other));
         }
-        WidgetView &operator=(const WidgetView &other)
+        WidgetView<Type> &operator=(const WidgetView<Type> &other)
         {
             return *this = WidgetView(other);
         }
-        WidgetView &operator=(WidgetView &&other)
+        WidgetView<Type> &operator=(WidgetView<Type> &&other)
         {
             std::swap(static_cast<Type &>(other), static_cast<Type &>(*this));
             return *this;
@@ -1223,6 +1253,36 @@ template <>
 inline void PropertyView<IBLOB>::save(FILE *f) const
 {
     IUSaveConfigBLOB(f, this);
+}
+
+template <>
+inline bool PropertyView<INumber>::snoop(XMLEle *root)
+{
+    return IUSnoopNumber(root, this) == 0;
+}
+
+template <>
+inline bool PropertyView<IText>::snoop(XMLEle *root)
+{
+    return IUSnoopText(root, this) == 0;
+}
+
+template <>
+inline bool PropertyView<ISwitch>::snoop(XMLEle *root)
+{
+    return IUSnoopSwitch(root, this) == 0;
+}
+
+template <>
+inline bool PropertyView<ILight>::snoop(XMLEle *root)
+{
+    return IUSnoopLight(root, this) == 0;
+}
+
+template <>
+inline bool PropertyView<IBLOB>::snoop(XMLEle *root)
+{
+    return IUSnoopBLOB(root, this) == 0;
 }
 
 template <typename T>

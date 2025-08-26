@@ -21,6 +21,9 @@
 #include <errno.h>
 #include <chrono>
 #include <algorithm>
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+#include <netinet/in.h>
+#endif
 
 // SocketAddress
 const char *SocketAddress::unixDomainPrefix = "localhost:";
@@ -66,6 +69,15 @@ bool SocketAddress::isUnix(const std::string &hostName)
 TcpSocketPrivate::TcpSocketPrivate(TcpSocket *parent)
     : parent(parent)
 { }
+
+TcpSocketPrivate::~TcpSocketPrivate()
+{
+    aboutToClose();
+    if (thread.joinable())
+    {
+        thread.join();
+    }
+}
 
 TcpSocket::TcpSocket(std::unique_ptr<TcpSocketPrivate> &&d)
     : d_ptr(std::move(d))

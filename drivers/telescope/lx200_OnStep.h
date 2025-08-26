@@ -24,6 +24,7 @@
 
     ===========================================
 
+    Version 1.24: During manual slew, only send back RA & DE.
     Version not yet updated/No INDI release:
     Version 1.22
     - fixed #:AW#" and ":MP#" commands by using getCommandSingleCharResponse instead of sendOnStepCommandBlind
@@ -41,7 +42,7 @@
     - fixed minutes passed meridian not showing actual values
     - fixed missing slewrates defineProperty and deleteProperty causing redefinitions of overrides
     - todo focuser stops working after some time ??? could not yet reproduce
-    - fixed poll and update slew rates 
+    - fixed poll and update slew rates
     - todo poll and update maximum slew speed SmartWebServer=>Settings
     Version 1.18
     - implemented Focuser T° compensation in FOCUSER TAB
@@ -180,6 +181,7 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         virtual bool updateProperties() override;
         virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
         virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
+        virtual bool Handshake() override;
 
     protected:
         virtual void getBasicData() override;
@@ -196,6 +198,9 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         virtual bool SetTrackRate(double raRate, double deRate) override;
         virtual void slewError(int slewCode) override;
         virtual bool Sync(double ra, double dec) override;
+
+        virtual bool MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command) override;
+        virtual bool MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command) override;
 
         virtual bool saveConfigItems(FILE *fp) override;
         virtual void Init_Outputs();
@@ -227,12 +232,13 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         //RotatorInterface
 
         IPState MoveRotator(double angle) override;
-        //         bool SyncRotator(double angle) override;
         IPState HomeRotator() override;
-        //         bool ReverseRotator(bool enabled) override;
         bool AbortRotator() override;
         bool SetRotatorBacklash (int32_t steps) override;
         bool SetRotatorBacklashEnabled(bool enabled) override;
+
+        // Homing
+        virtual IPState ExecuteHomeAction(TelescopeHomeAction action) override;
 
         //End RotatorInterface
 
@@ -275,6 +281,8 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         IPState OSDisableOutput(int output);
         bool OSGetOutputState(int output);
 
+        // Reset slew rate labels
+        void initSlewRates();
 
         bool sendOnStepCommand(const char *cmd);
         bool sendOnStepCommandBlind(const char *cmd);
@@ -332,11 +340,11 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         bool OSFocuser1 = false;
         ISwitchVectorProperty OSFocus1InitializeSP;
         ISwitch OSFocus1InitializeS[4];
-        
+
         // Focus T° Compensation
         INumberVectorProperty FocusTemperatureNP;
         INumber FocusTemperatureN[2];
-        
+
         ISwitchVectorProperty TFCCompensationSP;
         ISwitch TFCCompensationS[2];
         INumberVectorProperty TFCCoefficientNP;
@@ -370,9 +378,8 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         ISwitchVectorProperty OSRotatorDerotateSP;
         ISwitch OSRotatorDerotateS[2]; //On or Off
 
-
-
         int IsTracking = 0;
+        uint32_t m_RememberPollingPeriod {1000};
 
         // Reticle +/- Buttons
         ISwitchVectorProperty ReticSP;
@@ -394,8 +401,8 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
         ISwitchVectorProperty HomePauseSP;
         ISwitch HomePauseS[3];
 
-        ISwitchVectorProperty SetHomeSP;
-        ISwitch SetHomeS[2];
+        // ISwitchVectorProperty SetHomeSP;
+        // ISwitch SetHomeS[2];
 
         ISwitchVectorProperty PreferredPierSideSP;
         ISwitch PreferredPierSideS[3];
@@ -505,7 +512,4 @@ class LX200_OnStep : public LX200Generic, public INDI::WeatherInterface, public 
     private:
         int currentCatalog;
         int currentSubCatalog;
-
-
-
 };
