@@ -25,12 +25,14 @@
 #include <stdint.h>
 #include <any>
 #include <string>
+#include <functional>
 
 namespace Connection
 {
 class Interface;
 class Serial;
 class TCP;
+class I2C;
 }
 /**
  * @brief COMMUNICATION_TAB Where all the properties required to connect/disconnect from
@@ -140,6 +142,9 @@ class DefaultDevice : public ParentDevice
 
         /** \brief Add Polling period control to the driver */
         void addPollPeriodControl();
+
+        /** \brief Add Nickname text property to the driver */
+        void addNicknameControl();
 
     public:
         /** \brief Set all properties to IDLE state */
@@ -327,6 +332,56 @@ class DefaultDevice : public ParentDevice
          *         property not found).
          */
         bool ISNewProperty(INDI::Property &property, const std::string &elementName, const std::any &value);
+
+        /**
+         * @brief Generic helper function to update an INDI property based on an external operation.
+         *
+         * This function encapsulates the common pattern of:
+         * 1. Checking if a property's values have actually changed.
+         * 2. Executing an external update function (e.g., communicating with hardware).
+         * 3. Updating the INDI property's internal state and applying changes if the external update was successful.
+         * 4. Optionally saving the configuration.
+         *
+         * @tparam PropertyType The type of the INDI property (e.g., INDI::PropertyNumber, INDI::PropertyText, INDI::PropertySwitch).
+         * @tparam ValueType The type of the array elements (e.g., double, char*, ISState).
+         * @param property The INDI property to update.
+         * @param values The array of new values for the property elements.
+         * @param names The array of names corresponding to the values.
+         * @param n The number of elements in the values and names arrays.
+         * @param updater A std::function that performs the actual device update. It should return true on success, false on failure.
+         * @param saveConfig If true, save the property's configuration after a successful update. Defaults to false.
+         * @return True if the property was updated and the external operation was successful, false otherwise.
+         */
+        template<typename PropertyType, typename ValueType>
+        bool updateProperty(PropertyType& property, ValueType* values, char* names[], int n,
+                            std::function<bool()> updater, bool saveConfig = false)
+        {
+            if (property.isUpdated(values, names, n))
+            {
+                if (updater())
+                {
+                    property.update(values, names, n);
+                    property.setState(IPS_OK);
+                    if (saveConfig)
+                        this->saveConfig(property);
+                    property.apply();
+                    return true;
+                }
+                else
+                {
+                    property.setState(IPS_ALERT);
+                    property.apply();
+                    return false;
+                }
+            }
+            else
+            {
+                // If nothing is updated, just accept as-is
+                property.setState(IPS_OK);
+                property.apply();
+                return false;
+            }
+        }
 
         /**
          * @return getInterface Return the interface declared by the driver.
@@ -581,14 +636,51 @@ class DefaultDevice : public ParentDevice
         /** @brief syncDriverInfo sends the current driver information to the client. */
         void syncDriverInfo();
 
-
         /** \return Default name of the device. */
         virtual const char *getDefaultName() = 0;
+
+        /** @brief Set the device nickname
+         *  @param nick new device nickname
+         *
+         *  When a nickname is set, the full device name will be "DefaultName
+         *  Nickname". Setting the nickname will also set the device name. If
+         *  nick is already prefixed with the defaultname, it will be removed.
+         */
+        void setDeviceNickname(const char *nick);
+
+        /** \return Nickname for the device */
+        const char *getDeviceNickname();
+
+        /** @brief Lookup device nickname for an identifier
+         *  @param identifier The id to look up
+         *  @param device The device name for the identifier. If null or empty
+         *         string, will look up for current device's default name.
+         *
+         *  Returns the nickname if found, if not found returns nullptr.
+         */
+        const char *lookupDeviceNicknameFromId(const char *identifier, const char *device = nullptr);
+
+        /** @brief Set device nickname based on an identifier
+         *  @param identifier The id to look up
+         */
+        bool setDeviceNicknameFromId(const char *identifier);
+
+        void saveNicknameId(const char *nickname, const char *identifier);
+
+        /**
+         * \brief Inform driver that the nickname has been set.
+         *
+         * Reimplement this function to get notified on nickname update to save with saveNicknameId().
+         * To just read the nickname if already set, use getDeviceNickname();
+         * \param nickname The nickname. Emptystring or nullptr means no nickname set.
+         */
+        virtual void nicknameSet(const char *nickname);
 
     private:
         // Connection Plugins
         friend class Connection::Serial;
         friend class Connection::TCP;
+        friend class Connection::I2C;
         friend class FilterInterface;
         friend class FocuserInterface;
         friend class WeatherInterface;
@@ -596,6 +688,8 @@ class DefaultDevice : public ParentDevice
         friend class OutputInterface;
         friend class InputInterface;
         friend class PowerInterface;
+        friend class IMUInterface;
+        friend class PACInterface;
 
     protected:
         DefaultDevice(const std::shared_ptr<DefaultDevicePrivate> &dd);

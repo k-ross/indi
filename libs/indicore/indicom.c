@@ -597,6 +597,9 @@ int tty_read_expanded(int fd, char *buf, int nbytes, long timeout_seconds, long 
         buffer = geminiBuffer;
     }
 
+    int zero_read_count = 0;
+    const int MAX_ZERO_READS = 3;
+
     while (numBytesToRead > 0)
     {
         if ((err = tty_timeout_microseconds(fd, timeout_seconds, timeout_microseconds))) {
@@ -609,6 +612,21 @@ int tty_read_expanded(int fd, char *buf, int nbytes, long timeout_seconds, long 
 
         if (bytesRead < 0)
             return TTY_READ_ERROR;
+
+        if (bytesRead == 0)
+        {
+            zero_read_count++;
+            if (zero_read_count >= MAX_ZERO_READS)
+            {
+                if (tty_debug)
+                    IDLog("%s: Device not responding (zero bytes read %d times)\n", __FUNCTION__, MAX_ZERO_READS);
+                return TTY_READ_ERROR;
+            }
+            usleep(10000);  // 10ms delay before retry
+            continue;
+        }
+
+        zero_read_count = 0;  // Reset counter on successful read
 
         if (tty_debug)
         {
@@ -979,31 +997,8 @@ int tty_connect(const char *device, int bit_rate, int word_size, int parity, int
         goto error;
     }
 
-    // To set the modem handshake lines, use the following ioctls.
-    // See tty(4) ("man 4 tty") and ioctl(2) ("man 2 ioctl") for details.
-
-    if (ioctl(t_fd, TIOCSDTR) == -1) // Assert Data Terminal Ready (DTR)
-    {
-        IDLog("Error asserting DTR %s - %s(%d).\n", device, strerror(errno), errno);
-    }
-
-    if (ioctl(t_fd, TIOCCDTR) == -1) // Clear Data Terminal Ready (DTR)
-    {
-        IDLog("Error clearing DTR %s - %s(%d).\n", device, strerror(errno), errno);
-    }
-
-    handshake = TIOCM_DTR | TIOCM_RTS | TIOCM_CTS | TIOCM_DSR;
-    if (ioctl(t_fd, TIOCMSET, &handshake) == -1)
-        // Set the modem lines depending on the bits set in handshake
-    {
-        IDLog("Error setting handshake lines %s - %s(%d).\n", device, strerror(errno), errno);
-    }
-
-    // To read the state of the modem lines, use the following ioctl.
-    // See tty(4) ("man 4 tty") and ioctl(2) ("man 2 ioctl") for details.
-
+    // Read current modem line state for diagnostic purposes only.
     if (ioctl(t_fd, TIOCMGET, &handshake) == -1)
-        // Store the state of the modem lines in handshake
     {
         IDLog("Error getting handshake lines %s - %s(%d).\n", device, strerror(errno), errno);
     }

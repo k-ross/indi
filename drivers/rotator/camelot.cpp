@@ -59,8 +59,8 @@ bool Camelot::initProperties()
     RotatorSpeedSP.fill(getDeviceName(), "ROTATOR_SPEED", "Speed", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
     // Power
-    RotatorPowerNP[POWER_NORMAL].fill("POWER_NORMAL", "Normal", "%d", 0, 255, 1, 120);
-    RotatorPowerNP[POWER_HOLD].fill("POWER_HOLD", "Hold", "%d", 0, 255, 1, 100);
+    RotatorPowerNP[POWER_NORMAL].fill("POWER_NORMAL", "Normal", "%.f", 0, 255, 1, 120);
+    RotatorPowerNP[POWER_HOLD].fill("POWER_HOLD", "Hold", "%.f", 0, 255, 1, 100);
     RotatorPowerNP.fill(getDeviceName(), "ROTATOR_POWER", "Power", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     return true;
@@ -71,6 +71,42 @@ bool Camelot::initProperties()
 /////////////////////////////////////////////////////////////////////////////
 bool Camelot::updateProperties()
 {
+    // Need to call this before INDI::Rotator::updateProperties();
+    if (isConnected())
+    {
+        char res[DRIVER_LEN] = {0};
+
+        // Position
+        if (sendCommand("P#", res))
+        {
+            try
+            {
+                double position = std::stod(res) / 10.0;
+                GotoRotatorNP[0].setValue(position);
+                GotoRotatorNP.setState(IPS_OK);
+            }
+            catch (const std::invalid_argument& ia)
+            {
+                LOGF_ERROR("Invalid argument for std::stod in updateProperties: %s", ia.what());
+                GotoRotatorNP.setState(IPS_ALERT);
+            }
+            catch (const std::out_of_range& oor)
+            {
+                LOGF_ERROR("Out of range for std::stod in updateProperties: %s", oor.what());
+                GotoRotatorNP.setState(IPS_ALERT);
+            }
+        }
+
+        // Direction
+        if (sendCommand("K#", res))
+        {
+            if (strstr(res, "Normal"))
+                ReverseRotatorSP[INDI_DISABLED].setState(ISS_ON);
+            else
+                ReverseRotatorSP[INDI_ENABLED].setState(ISS_ON);
+        }
+    }
+
     INDI::Rotator::updateProperties();
 
     if (isConnected())
@@ -103,10 +139,16 @@ const char * Camelot::getDefaultName()
 bool Camelot::Handshake()
 {
     char res[DRIVER_LEN] = {0};
-    if (sendCommand("#", res))
+    // Try up to 3 times
+    for (int i = 0; i < 3; i++)
     {
-        if (strstr(res, "OK.ROT!"))
-            return true;
+        if (sendCommand("#", res))
+        {
+            if (strstr(res, "OK.ROT!"))
+                return true;
+        }
+
+        usleep(100000);
     }
     return false;
 }
@@ -164,24 +206,12 @@ bool Camelot::ISNewSwitch(const char *dev, const char *name, ISState *states, ch
     {
         if (RotatorSpeedSP.isNameMatch(name))
         {
-            auto prevSpeed = RotatorSpeedSP.findOnSwitchIndex();
-            RotatorSpeedSP.update(states, names, n);
-            auto newSpeed = RotatorSpeedSP.findOnSwitchIndex();
-
-            char cmd[DRIVER_LEN] = {0};
-            snprintf(cmd, DRIVER_LEN, "Z%d", newSpeed);
-            if (sendCommand(cmd))
+            updateProperty(RotatorSpeedSP, states, names, n, [this, states, n]
             {
-                RotatorSpeedSP.setState(IPS_OK);
-            }
-            else
-            {
-                RotatorSpeedSP.reset();
-                RotatorSpeedSP[prevSpeed].setState(ISS_ON);
-                RotatorSpeedSP.setState(IPS_ALERT);
-            }
-
-            RotatorSpeedSP.apply();
+                char cmd[DRIVER_LEN] = {0};
+                snprintf(cmd, DRIVER_LEN, "Z%d", IUFindOnStateIndex(states, n));
+                return sendCommand(cmd);
+            }, true);
             return true;
         }
     }
@@ -198,14 +228,15 @@ bool Camelot::ISNewNumber(const char *dev, const char *name, double values[], ch
     {
         if (RotatorPowerNP.isNameMatch(name))
         {
-            RotatorPowerNP.update(values, names, n);
-            char cmd[DRIVER_LEN] = {0};
-            snprintf(cmd, DRIVER_LEN, "*%d", static_cast<int>(values[POWER_NORMAL]));
-            auto normalOk = sendCommand(cmd);
-            snprintf(cmd, DRIVER_LEN, "+%d", static_cast<int>(values[POWER_HOLD]));
-            auto holdOk = sendCommand(cmd);
-            RotatorPowerNP.setState((normalOk && holdOk) ? IPS_OK : IPS_ALERT);
-            RotatorPowerNP.apply();
+            updateProperty(RotatorPowerNP, values, names, n, [this, values]()
+            {
+                char cmd[DRIVER_LEN] = {0};
+                snprintf(cmd, DRIVER_LEN, "*%d", static_cast<int>(values[POWER_NORMAL]));
+                auto normalOk = sendCommand(cmd);
+                snprintf(cmd, DRIVER_LEN, "+%d", static_cast<int>(values[POWER_HOLD]));
+                auto holdOk = sendCommand(cmd);
+                return normalOk && holdOk;
+            }, true);
             return true;
         }
     }
@@ -219,14 +250,6 @@ bool Camelot::queryStatus()
 {
     char res[DRIVER_LEN] = {0};
 
-    // Position
-    if (sendCommand("P#", res))
-    {
-        double position = std::stod(res) / 10.0;
-        GotoRotatorNP[0].setValue(position);
-        GotoRotatorNP.setState(IPS_OK);
-    }
-
     // Speed
     if (sendCommand("Y#", res))
     {
@@ -236,15 +259,6 @@ bool Camelot::queryStatus()
             RotatorSpeedSP[SPEED_MEDIUM].setState(ISS_ON);
         else if (strstr(res, "Slow"))
             RotatorSpeedSP[SPEED_SLOW].setState(ISS_ON);
-    }
-
-    // Direction
-    if (sendCommand("K#", res))
-    {
-        if (strstr(res, "Normal"))
-            ReverseRotatorSP[INDI_DISABLED].setState(ISS_ON);
-        else
-            ReverseRotatorSP[INDI_ENABLED].setState(ISS_ON);
     }
 
     // Power
@@ -274,15 +288,26 @@ void Camelot::TimerHit()
     double current_pos = GotoRotatorNP[0].getValue();
     IPState current_state = GotoRotatorNP.getState();
 
-    if (sendCommand("P#", res))
-    {
-        GotoRotatorNP[0].setValue(std::stod(res) / 10.0);
-    }
-
     if (current_state == IPS_BUSY)
     {
         if (sendCommand("J#", res) && strstr(res, "M0:OK"))
             GotoRotatorNP.setState(IPS_OK);
+    }
+
+    if (sendCommand("P#", res))
+    {
+        try
+        {
+            GotoRotatorNP[0].setValue(std::stod(res) / 10.0);
+        }
+        catch (const std::invalid_argument& ia)
+        {
+            LOGF_ERROR("Invalid argument for std::stod in TimerHit: %s", ia.what());
+        }
+        catch (const std::out_of_range& oor)
+        {
+            LOGF_ERROR("Out of range for std::stod in TimerHit: %s", oor.what());
+        }
     }
 
     if (std::abs(current_pos - GotoRotatorNP[0].getValue()) > 0.1 || current_state != GotoRotatorNP.getState())
@@ -294,51 +319,81 @@ void Camelot::TimerHit()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+/// Save configuration items
+/////////////////////////////////////////////////////////////////////////////
+bool Camelot::saveConfigItems(FILE *fp)
+{
+    INDI::Rotator::saveConfigItems(fp);
+    RotatorSpeedSP.save(fp);
+    RotatorPowerNP.save(fp);
+    return true;
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
 /// Send Command
 /////////////////////////////////////////////////////////////////////////////
 bool Camelot::sendCommand(const char * cmd, char * res, int cmd_len, int res_len)
 {
     int nbytes_written = 0, nbytes_read = 0, rc = -1;
+    int retries = 0;
 
-    tcflush(PortFD, TCIOFLUSH);
-
-    if (cmd_len > 0)
+    do
     {
-        char hex_cmd[DRIVER_LEN * 3] = {0};
-        hexDump(hex_cmd, cmd, cmd_len);
-        LOGF_DEBUG("CMD <%s>", hex_cmd);
-        rc = tty_write(PortFD, cmd, cmd_len, &nbytes_written);
-    }
-    else
-    {
-        LOGF_DEBUG("CMD <%s>", cmd);
+        tcflush(PortFD, TCIOFLUSH);
 
-        char formatted_command[DRIVER_LEN] = {0};
-        snprintf(formatted_command, DRIVER_LEN, "%s\n", cmd);
-        rc = tty_write_string(PortFD, formatted_command, &nbytes_written);
+        if (cmd_len > 0)
+        {
+            char hex_cmd[DRIVER_LEN * 3] = {0};
+            hexDump(hex_cmd, cmd, cmd_len);
+            LOGF_DEBUG("CMD <%s>", hex_cmd);
+            rc = tty_write(PortFD, cmd, cmd_len, &nbytes_written);
+        }
+        else
+        {
+            LOGF_DEBUG("CMD <%s>", cmd);
+
+            char formatted_command[DRIVER_LEN] = {0};
+            snprintf(formatted_command, DRIVER_LEN, "%s", cmd);
+            rc = tty_write_string(PortFD, formatted_command, &nbytes_written);
+        }
+
+        if (rc != TTY_OK)
+        {
+            char errstr[MAXRBUF] = {0};
+            tty_error_msg(rc, errstr, MAXRBUF);
+            LOGF_ERROR("Serial write error: %s.", errstr);
+            return false;
+        }
+
+        if (res == nullptr)
+            return true;
+
+        if (res_len > 0)
+            rc = tty_read(PortFD, res, res_len, DRIVER_TIMEOUT, &nbytes_read);
+        else
+            rc = tty_nread_section(PortFD, res, DRIVER_LEN, DRIVER_STOP_CHAR, DRIVER_TIMEOUT, &nbytes_read);
+
+        if (rc == TTY_OK)
+            break;
+
+        if (rc == TTY_TIME_OUT)
+            retries++;
+        else
+        {
+            char errstr[MAXRBUF] = {0};
+            tty_error_msg(rc, errstr, MAXRBUF);
+            LOGF_ERROR("%s Serial read error: %s.", cmd, errstr);
+            return false;
+        }
     }
+    while (retries < 3);
 
     if (rc != TTY_OK)
     {
         char errstr[MAXRBUF] = {0};
         tty_error_msg(rc, errstr, MAXRBUF);
-        LOGF_ERROR("Serial write error: %s.", errstr);
-        return false;
-    }
-
-    if (res == nullptr)
-        return true;
-
-    if (res_len > 0)
-        rc = tty_read(PortFD, res, res_len, DRIVER_TIMEOUT, &nbytes_read);
-    else
-        rc = tty_nread_section(PortFD, res, DRIVER_LEN, DRIVER_STOP_CHAR, DRIVER_TIMEOUT, &nbytes_read);
-
-    if (rc != TTY_OK)
-    {
-        char errstr[MAXRBUF] = {0};
-        tty_error_msg(rc, errstr, MAXRBUF);
-        LOGF_ERROR("Serial read error: %s.", errstr);
+        LOGF_ERROR("%s Serial read error after 3 retries: %s.", cmd, errstr);
         return false;
     }
 
@@ -354,8 +409,6 @@ bool Camelot::sendCommand(const char * cmd, char * res, int cmd_len, int res_len
         res[nbytes_read - 1] = 0;
         LOGF_DEBUG("RES <%s>", res);
     }
-
-    tcflush(PortFD, TCIOFLUSH);
 
     return true;
 }

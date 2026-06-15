@@ -88,6 +88,12 @@ bool Excalibur::updateProperties()
     DI::updateProperties();
     LI::updateProperties();
 
+    if (isConnected())
+    {
+        getParkingStatus();
+        getLightIntensity();
+    }
+
     return true;
 }
 
@@ -131,22 +137,21 @@ bool Excalibur::Ack()
 //////////////////////////////////////////////////////////////////////
 ///
 //////////////////////////////////////////////////////////////////////
+bool Excalibur::Disconnect()
+{
+    EnableLightBox(false);
+    return INDI::DefaultDevice::Disconnect();
+}
+
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
 bool Excalibur::EnableLightBox(bool enable)
 {
     char response[20] = {0};
     char cmd[16] = {0};
-    if (!enable)
-    {
-        snprintf(cmd, 16, "L%d##", 0);
-        return sendCommand(cmd, response);
-    }
-    else
-    {
-        snprintf(cmd, 16, "L%d##", (int)LightIntensityNP[0].getValue());
-
-        return sendCommand(cmd, response);
-    }
-
+    snprintf(cmd, 16, "L%d##", enable ? static_cast<int>(LightIntensityNP[0].getValue()) : 0);
+    return sendCommand(cmd, response);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -154,11 +159,10 @@ bool Excalibur::EnableLightBox(bool enable)
 //////////////////////////////////////////////////////////////////////
 bool Excalibur::SetLightBoxBrightness(uint16_t value)
 {
-    if(LightSP[FLAT_LIGHT_ON].getState() != ISS_ON)
-    {
-        LOG_ERROR("You must set On the Flat Light first.");
-        return false;
-    }
+    // If light box is not on, then we simply accept the value as-is
+    // without dispatching the command to the device
+    if (value > 0 && LightSP[FLAT_LIGHT_ON].getState() != ISS_ON)
+        return true;
 
     if( ParkCapSP[0].getState() != ISS_ON)
     {
@@ -166,7 +170,6 @@ bool Excalibur::SetLightBoxBrightness(uint16_t value)
         return false;
     }
 
-    //char response[20] = {0};
     char cmd[DRIVER_RES] = {0};
     snprintf(cmd, 30, "L%d##", value);
     return sendCommand(cmd);
@@ -196,7 +199,7 @@ void Excalibur::TimerHit()
     if (!isConnected())
         return;
 
-    updateDeviceStatus();
+    getParkingStatus();
 
     SetTimer(getCurrentPollingPeriod());
 }
@@ -248,7 +251,6 @@ bool Excalibur::ISNewSwitch(const char *dev, const char *name, ISState *states, 
 bool Excalibur::ISSnoopDevice(XMLEle *root)
 {
     LI::snoop(root);
-
     return INDI::DefaultDevice::ISSnoopDevice(root);
 }
 
@@ -258,14 +260,13 @@ bool Excalibur::ISSnoopDevice(XMLEle *root)
 bool Excalibur::saveConfigItems(FILE *fp)
 {
     INDI::DefaultDevice::saveConfigItems(fp);
-
     return LI::saveConfigItems(fp);
 }
 
 //////////////////////////////////////////////////////////////////////
 ///
 //////////////////////////////////////////////////////////////////////
-void Excalibur::updateDeviceStatus()
+void Excalibur::getLightIntensity()
 {
     char res[DRIVER_RES] = {0};
 
@@ -285,7 +286,7 @@ void Excalibur::updateDeviceStatus()
             LightIntensityNP.apply();
     }
 
-    auto haveLight = LightIntensityNP[0].getValue() > 0;
+    auto haveLight = pos > 0;
 
     // If we have light, but switch is off, then turn it on and vice versa
     if ( (haveLight && LightSP[FLAT_LIGHT_OFF].getState() == ISS_ON) || (!haveLight
@@ -296,6 +297,14 @@ void Excalibur::updateDeviceStatus()
         LightSP[FLAT_LIGHT_OFF].setState(haveLight ? ISS_OFF : ISS_ON);
         LightSP.apply();
     }
+
+}
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
+void Excalibur::getParkingStatus()
+{
+    char res[DRIVER_RES] = {0};
 
     // Get Dust Cap Status
     sendCommand("P#", res);

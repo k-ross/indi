@@ -43,6 +43,8 @@ class Excalibur : public INDI::DefaultDevice, public INDI::LightBoxInterface, pu
         virtual bool ISSnoopDevice(XMLEle *root) override;
         virtual void TimerHit() override;
 
+        virtual bool Disconnect() override;
+
     protected:
         virtual bool SetLightBoxBrightness(uint16_t value) override;
         virtual bool EnableLightBox(bool enable) override;
@@ -55,7 +57,8 @@ class Excalibur : public INDI::DefaultDevice, public INDI::LightBoxInterface, pu
         bool Ack();
         int PortFD{ -1 };
         bool sendCommand(const char * cmd, char * res = nullptr);
-        void updateDeviceStatus();
+        void getParkingStatus();
+        void getLightIntensity();
 
         static const uint32_t DRIVER_RES { 32 };
         static const char DRIVER_DEL { '#' };
